@@ -305,12 +305,12 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">POINT (index out, others folded) = arrow cursor · stop on something = it opens (moving selects nothing) · PRESS AND HOLD = drag · TWO FINGERS = scroll · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll a note / RESIZE a model or image, corner-drag = resize anything · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
+<div id="hint">POINT (index out, others folded) = arrow cursor · stop on something = it opens (moving selects nothing) · PRESS AND HOLD = drag · TWO FINGERS = scroll · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll a note / RESIZE a model or image, corner-drag = resize anything · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · H head control (blink = open, 2 blinks = file, wink = carry) · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
 
 <script type="module">
-import { HandLandmarker, FilesetResolver } from
+import { HandLandmarker, FaceLandmarker, FilesetResolver } from
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 
 // modes: ?mode=mirror (default, self-view) | overlay (transparent — OBS
@@ -412,6 +412,19 @@ const TUNE = {
                          // travelling hand never selects anything. This is
                          // what makes instant selection safe to browse with.
   dwellCoolMs:   450,    // pause after a dwell fires
+  // --- head control plane (press H) ---
+  headGain:      3.4,    // screen travel per unit of head turn
+  headDeadzone:  0.012,  // ignore turns smaller than this, so a still
+                         // head gives a still cursor instead of drifting
+  headSmooth:    1.0,    // One Euro min-cutoff for the head cursor
+  blinkScore:    0.5,    // eye-closed confidence from the face model
+  blinkOpenMax:  0.25,   // ... and what counts as definitely OPEN
+  blinkMinMs:    190,    // shorter than this is an INVOLUNTARY blink and
+                         // is ignored -- natural blinks run 100-150ms
+  blinkMaxMs:   1300,    // longer than this is resting, not a click
+  doubleBlinkMs: 620,    // two deliberate blinks inside this = double
+  winkMs:        260,    // one eye held shut = pick up / put down
+  winkDrag:      true,
   // --- two-finger scroll ---
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
@@ -1810,6 +1823,7 @@ addEventListener("keydown", e => {
   if (e.key === "r" || e.key === "R") loadTree().then(() => spawnStage());
   if (e.key === "d" || e.key === "D") dbg.style.display = dbg.style.display === "block" ? "none" : "block";
   if (e.key === "c" || e.key === "C") cycleCam();
+  if (e.key === "h" || e.key === "H") HEAD.toggle();
   if (e.key === "p" || e.key === "P") {
     SAMPLER = { until: performance.now() + 4000, r: [], h8: [], h12: [], h16: [], h20: [], s: [], a: [] };
     toast("OMNI sampler: hold the pose for 4 seconds…", 4000);
@@ -2221,7 +2235,7 @@ function physics(dt) {
 
 async function boot() {
   await pickInitialCam();
-  const vision = await FilesetResolver.forVisionTasks(
+  const vision = VISION = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
   landmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: { modelAssetPath:
@@ -2251,6 +2265,7 @@ async function boot() {
     if (cam.currentTime !== lastVideoTs) {
       lastVideoTs = cam.currentTime;
       const res = landmarker.detectForVideo(cam, now);
+      if (HEAD.on) HEAD.update(now);
       const seen = new Set();
       (res.landmarks || []).forEach((lms, i) => {
         seen.add(i);
@@ -3079,10 +3094,11 @@ async function boot() {
             `\npinch ${ratio.toFixed(2)} ${cur.pinched ? "CLOSED" : "open"}` +
             `\npalm ${cur.palmOpen ? "OPEN" : "-"}${cur.fpSplay ? " CLAW" : ""} pull ph${cur.fp ? cur.fp.ph : 0}` +
             `\n${cur.ptDbg || ""}` +
+            (HEAD.on ? `\n${HEAD.dbg || ""}` : "") +
             `\n${cur.fpDbg || ""}` + (SAMPLED ? `\n${SAMPLED}` : "");
       });
       Object.keys(cursors).map(Number).forEach(i => {
-        if (i !== MOUSE_ID && !seen.has(i)) dropCursor(i);
+        if (i !== MOUSE_ID && i !== HEAD_ID && !seen.has(i)) dropCursor(i);
       });
 
       // ---- GESTURE v3.9: THE DELIBERATE CLAP (Jared, after false
@@ -3481,6 +3497,164 @@ async function renderLoop() {
 //   drag the bottom-right   resize the item
 //   double right click      reset an item's rotation to flat
 // ============================================================
+// ============================================================
+// NOVROS HEAD PLANE  (added 2026-09-20)  -- press H
+// ------------------------------------------------------------
+// A third way to drive the board, for when the hands are busy or the
+// camera angle is against them: the head aims, the eyes click.
+//
+//   turn / tilt your head   move the arrow
+//   one deliberate blink    open a folder
+//   two blinks              open a file (or close what is open)
+//   wink, move, wink again  pick something up and put it down
+//
+// It runs the FaceLandmarker out of the SAME MediaPipe bundle the hands
+// already load, and it is created lazily on first use: a board that
+// never presses H pays nothing for this.
+//
+// Aiming is ABSOLUTE, not relative -- a given head angle always means
+// the same point on screen -- so the cursor self-centres and can never
+// drift away the way an accumulating pointer does.
+// ============================================================
+const HEAD_ID = 98;
+let VISION = null, faceLm = null, headBusy = false;
+const HEAD = {
+  on: false, neutral: null, samples: [], closedT: 0, clickT: 0,
+  pending: null, winkT: 0, winkSide: 0, held: null, fx: null, fy: null,
+
+  async toggle() {
+    if (this.on) { this.stop(); return; }
+    if (!VISION) { toast("head control needs the tracker running", 1800); return; }
+    if (headBusy) return;
+    if (!faceLm) {
+      headBusy = true;
+      toast("waking the face tracker…", 1600);
+      try {
+        faceLm = await FaceLandmarker.createFromOptions(VISION, {
+          baseOptions: { modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "GPU" },
+          runningMode: "VIDEO", numFaces: 1,
+          outputFaceBlendshapes: true });
+      } catch (e) {
+        toast("face tracker failed: " + e.message, 3000); headBusy = false; return;
+      }
+      headBusy = false;
+    }
+    this.on = true; this.neutral = null; this.samples = [];
+    this.fx = makeEuro(); this.fy = makeEuro();
+    const cur = getCursor(HEAD_ID);
+    cur.isHead = true; cur.el.classList.add("pointing");
+    toast("HEAD CONTROL on — look straight ahead to centre", 2200);
+  },
+
+  stop() {
+    this.on = false;
+    if (this.held) { const c = getCursor(HEAD_ID); endGrab(this.held, HEAD_ID, c); this.held = null; }
+    dropCursor(HEAD_ID);
+    toast("head control off", 1200);
+  },
+
+  // one deliberate blink opens a folder, two open a file -- the same
+  // single/double split the finger press uses, so the two planes agree
+  click(cur) {
+    const t = performance.now();
+    if (this.pending && t - this.clickT < TUNE.doubleBlinkMs) {
+      clearTimeout(this.pending); this.pending = null; this.clickT = 0;
+      pointDouble(cur); return;
+    }
+    this.clickT = t;
+    this.pending = setTimeout(() => { this.pending = null; pointSingle(cur); },
+                              TUNE.doubleBlinkMs);
+  },
+
+  update(now) {
+    if (!this.on || !faceLm) return;
+    let r; try { r = faceLm.detectForVideo(cam, now); } catch { return; }
+    const lm = r && r.faceLandmarks && r.faceLandmarks[0];
+    if (!lm) { this.dbg = "head: no face"; return; }
+    const cur = getCursor(HEAD_ID);
+    cur.isHead = true; cur.el.classList.add("pointing");
+
+    // Head aim, measured against the face's OWN width so it holds at any
+    // distance: where the nose sits relative to the line between the
+    // eyes is a clean proxy for yaw and pitch, and needs no matrix.
+    const L = lm[33], R = lm[263], nose = lm[1];
+    const faceW = Math.hypot(L.x - R.x, L.y - R.y) || 0.1;
+    const cxN = (L.x + R.x) / 2, cyN = (L.y + R.y) / 2;
+    const yaw = (nose.x - cxN) / faceW, pitch = (nose.y - cyN) / faceW;
+
+    if (!this.neutral) {                       // capture "looking ahead"
+      this.samples.push([yaw, pitch]);
+      if (this.samples.length >= 20) {
+        const n = this.samples.length;
+        this.neutral = [this.samples.reduce((a, v) => a + v[0], 0) / n,
+                        this.samples.reduce((a, v) => a + v[1], 0) / n];
+        toast("centred — turn your head to steer", 1500);
+      }
+      this.dbg = `head: centring ${this.samples.length}/20`;
+      return;
+    }
+    const dz = v => Math.abs(v) < TUNE.headDeadzone ? 0 : v;
+    // negated: the view is a mirror, so turning right must go right
+    const dx = -dz(yaw - this.neutral[0]), dy = dz(pitch - this.neutral[1]);
+    const tx = innerWidth / 2 + dx * TUNE.headGain * innerWidth;
+    const ty = innerHeight / 2 + dy * TUNE.headGain * innerHeight;
+    cur.x = this.fx(Math.max(4, Math.min(innerWidth - 4, tx)), now);
+    cur.y = this.fy(Math.max(4, Math.min(innerHeight - 4, ty)), now);
+    cur.el.style.left = cur.x + "px"; cur.el.style.top = cur.y + "px";
+    if (this.held) {                           // carrying something
+      this.held.x = cur.x + (this.held.ox || 0);
+      this.held.y = cur.y + (this.held.oy || 0);
+    }
+
+    // ---- the eyes ----
+    const bs = r.faceBlendshapes && r.faceBlendshapes[0];
+    if (!bs) return;
+    let bL = 0, bR = 0;
+    for (const c of bs.categories) {
+      if (c.categoryName === "eyeBlinkLeft") bL = c.score;
+      else if (c.categoryName === "eyeBlinkRight") bR = c.score;
+    }
+    const both = bL > TUNE.blinkScore && bR > TUNE.blinkScore;
+    const winkL = bL > TUNE.blinkScore && bR < TUNE.blinkOpenMax;
+    const winkR = bR > TUNE.blinkScore && bL < TUNE.blinkOpenMax;
+    const wink = winkL || winkR;
+
+    if (TUNE.winkDrag && wink) {
+      if (!this.winkT) { this.winkT = now; this.winkSide = winkL ? 1 : 2; }
+      else if (now - this.winkT > TUNE.winkMs && this.winkSide) {
+        this.winkSide = 0;                          // fires once per wink
+        if (this.held) { endGrab(this.held, HEAD_ID, cur); this.held = null; }
+        else {
+          const t = hitTest(cur);
+          if (t && t.grabbedBy.length === 0) {
+            beginGrab(t, HEAD_ID, cur);
+            if (t.mode !== "pinned") {
+              t.mode = "move"; t.ox = t.x - cur.x; t.oy = t.y - cur.y;
+              t.holdX = cur.x; t.holdY = cur.y; t.holdT = now; t.hch = 0.6;
+            }
+            this.held = t;
+          }
+        }
+      }
+    } else if (!wink) this.winkT = 0;
+
+    // A deliberate blink is one you MEAN: an involuntary blink is over in
+    // 100-150ms, so anything shorter than blinkMinMs is thrown away and
+    // the board never fires while you are simply looking at it.
+    if (both && !this.closedT) this.closedT = now;
+    else if (!both && this.closedT) {
+      const heldMs = now - this.closedT; this.closedT = 0;
+      if (heldMs >= TUNE.blinkMinMs && heldMs <= TUNE.blinkMaxMs) this.click(cur);
+    }
+    this.dbg = `head yaw ${dx.toFixed(3)} pitch ${dy.toFixed(3)}` +
+               ` eyes ${bL.toFixed(2)}/${bR.toFixed(2)}` +
+               `${both ? " BLINK" : wink ? " WINK" : ""}` +
+               `${this.held ? " CARRYING" : ""}`;
+  },
+};
+
 const MOUSE_ID = 99;
 // The corner zone that means "resize". Scaled off the item's RENDERED
 // size, because a flat 26px square is most of a shrunken prop and an
