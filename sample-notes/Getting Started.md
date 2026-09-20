@@ -59,37 +59,49 @@ Hold **shift** while rotating for fine control.
 
 # Your hands
 
-The hand behaves like a mouse. **How many fingers are out picks the
-button; the thumb closing on them is the button going down.**
+**Your index fingertip is the cursor. Your thumb is the button.** That
+is the whole of it — there is no pose to hold and nothing to get right
+before the hand will listen.
 
-    one finger out            the arrow follows your fingertip
-    ...thumb touches it       LEFT BUTTON
-    ...tap                    click: open it
-    ...hold and move          drag it around
-    ...let the thumb go       drop it
+    one finger                 the arrow follows your fingertip
+    ...arrow lights up         there is something under it to act on
+    ...arrow turns red         you are over a close button
+    thumb touches the index    BUTTON DOWN
+    ...release without moving  click: it opens, or it closes
+    ...move, then release      you dragged it there
+    open your hand flat        always lets go, whatever else is true
 
-    two fingers out           index and middle
-    ...move up and down       scroll the pane under the cursor
-    ...thumb touches them     RIGHT BUTTON
-    ...tap                    put a rotated thing back flat
-    ...hold and move          rotate it in 3D
+    two fingers out            index and middle
+    ...move up and down        scroll the pane under the cursor
+    ...thumb touches them      RIGHT BUTTON
+    ...tap                     put a rotated thing back flat
+    ...hold and move           rotate it in 3D
 
-    pinch and drag            move things, the original way
-    two hands                 scale
-    clap                      sweep the board clean
+    two hands                  scale
+    clap                       sweep the board clean
 
-Both button signals are the thumb travelling **across** the palm. That
-is deliberate: a lateral movement reads clearly from any camera angle,
-where pressing forward barely changes anything a camera can measure.
-It is why the buttons work with the camera off to one side.
+A click is a press that did not travel. Hold it as long as you like —
+there is no time limit, and being deliberate will not turn a click into
+a drag.
 
-Nothing fires on its own. Hover-to-click exists in Settings but is off,
-because an interface that activates where you merely rest your hand is
-one you cannot rest your hand in.
+The button is measured against **your own hand**: how far apart your
+thumb and finger rest sets the threshold, so it fits your hand and your
+camera angle without configuring anything. Seen from the side that gap
+looks smaller than it is, which is why a fixed number could never work.
 
 Every distance the tracker measures is a multiple of your own hand's
 width on screen, so the controls feel the same on any display and at any
 distance from the camera.
+
+
+# The left hand
+
+If both hands are in frame the left one drives the OS rather than being
+a second mouse:
+
+    open palm, held            the ring menu, in or out
+    thumb pinch, tapped        close the front window
+    two fingers, held          next input plane
 
 # Your head
 

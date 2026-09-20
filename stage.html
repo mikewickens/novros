@@ -431,7 +431,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   /* the dwell ring becomes the hover-to-click charge, drawn around the
      arrow's tip so the feedback sits exactly where you are aiming */
   .cursor.pointing .dwell { display:block; inset:-12px; opacity:0.9; }
-  .cursor.clicking .arrow { background:#ffffff; transform:scale(0.86); }
+  .cursor.clicking .arrow { background:#ffffff; transform:scale(0.84); }
+  /* over something actionable: the arrow lights and grows a little */
+  .cursor.over .arrow { background:rgb(var(--c30));
+    filter:drop-shadow(0 0 7px rgba(var(--c30),0.95)) drop-shadow(0 2px 5px rgba(0,0,0,0.7));
+    transform:scale(1.12); }
+  /* over a close button: red, so shutting something looks like shutting it */
+  .cursor.overx .arrow { background:#ff7a70;
+    filter:drop-shadow(0 0 8px rgba(255,122,112,0.95)); transform:scale(1.12); }
+  .cursor.overx.clicking .arrow { background:#fff; }
+  /* two fingers out: scroll and right button live here */
+  .cursor.two { border-radius:7px; width:34px; height:20px; margin:-10px 0 0 -17px;
+                border-color:rgba(var(--c30),0.95);
+                background:rgba(var(--c30),0.22); }
+  .cursor.two .arrow, .cursor.two .dwell { display:none; }
   .cursor .dwell { position:absolute; inset:-7px; border-radius:50%;
                    background:conic-gradient(rgb(var(--c26)) calc(var(--p)*360deg), transparent 0);
                    -webkit-mask:radial-gradient(circle, transparent 58%, black 60%);
@@ -4632,9 +4645,22 @@ async function boot() {
           } else cur.scY = null;
         }
 
-        const ptSig = !twoOut && (f8v - backMean) > TUNE.pointContrast &&
-                      f8v > TUNE.pointArch && aspect <= 6;
+        // A TRACKED HAND IS A POINTER. There used to be a pose test
+        // here -- index out, the other three folded -- and whenever it
+        // failed the arrow vanished, the old filled circle came back,
+        // and the hand silently changed from a mouse into the legacy
+        // pinch-grab that seizes whatever it touches. Relaxing your
+        // fingers mid-pinch was enough to flip it. That switching
+        // underneath you is what made everything feel like a coin toss.
+        //
+        // There is nothing left for the test to decide. The cursor is
+        // the index fingertip and the button is the thumb, neither of
+        // which needs the other three fingers to be in any position.
+        const ptSig = !twoOut && aspect <= 6;
         if (twoOut) { cur.ptGood = 0; cur.dwT = 0; cur.dwArm = false; }
+        // two fingers is its own mode, and it should look like one rather
+        // than like the arrow having failed
+        cur.el.classList.toggle("two", !!twoOut);
         if (ptSig) cur.ptGood = now;
         // A press BENDS the index, which by definition fails the point
         // test above -- so a held press starved the grace window and the
@@ -4805,6 +4831,14 @@ async function boot() {
         }
         cur.el.classList.toggle("pointing", !!cur.ptActive);
         cur.el.classList.toggle("clicking", !!cur.ptBent);
+        // lit when there is something under it to act on, so the arrow
+        // answers "will this do anything" before you commit to a press
+        if (cur.ptActive) {
+          const el0 = document.elementFromPoint(cur.x, cur.y);
+          const overX = !!(el0 && el0.closest && el0.closest(".xbtn"));
+          cur.el.classList.toggle("over", overX || !!hitTest(cur));
+          cur.el.classList.toggle("overx", overX);
+        } else cur.el.classList.remove("over", "overx");
 
         const handGarbage = aspect > 6;
         if (handGarbage) cur.probKill = true;   // garbage drops mute taps
