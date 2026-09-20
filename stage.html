@@ -2196,10 +2196,23 @@ const BG = {
       this.sx.filter = "none";
       this.bgx.drawImage(this.sc, 0, 0, W, H);
     } else if (this.mode === "image" && this.img && this.img.complete && this.img.naturalWidth) {
-      const ir = this.img.naturalWidth / this.img.naturalHeight, cr = W / H;
-      let dw = W, dh = H;
-      if (ir > cr) dw = H * ir; else dh = W / ir;
-      this.bgx.drawImage(this.img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      // Scale the source ONCE into a cache at composite size, then blit
+      // that each frame. These wallpapers run to 6016px square; rescaling
+      // one of those sixty times a second is work nobody asked for, and
+      // the result is identical after the first frame.
+      const key = `${this.src}|${W}x${H}`;
+      if (this.imgKey !== key) {
+        if (!this.imgc) { this.imgc = document.createElement("canvas");
+                          this.imgx = this.imgc.getContext("2d"); }
+        this.imgc.width = W; this.imgc.height = H;
+        this.imgx.imageSmoothingQuality = "high";
+        const ir = this.img.naturalWidth / this.img.naturalHeight, cr = W / H;
+        let dw = W, dh = H;
+        if (ir > cr) dw = H * ir; else dh = W / ir;
+        this.imgx.drawImage(this.img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        this.imgKey = key;
+      }
+      this.bgx.drawImage(this.imgc, 0, 0);
     } else {
       this.bgx.fillStyle = `rgb(${this.colour})`;
       this.bgx.fillRect(0, 0, W, H);
