@@ -287,12 +287,24 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .wdg .strip .t { font:600 14px -apple-system,sans-serif;
                    color:rgba(var(--c41),0.94); margin-top:5px; }
   .wdg canvas { display:block; }
-  .card.wdg.clockw, .card.wdg.datew { width:200px; }
+  /* clock and date are the SAME square tile, the way a home screen
+     pairs them; weather is the wide one. */
+  .card.wdg.clockw, .card.wdg.datew { width:200px; height:200px; }
+  .card.wdg.clockw .win, .card.wdg.datew .win {
+     box-sizing:border-box; height:100%; display:flex; }
+  .card.wdg.clockw .win { align-items:center; justify-content:center; padding:20px; }
+  .card.wdg.datew .win { flex-direction:column; align-items:flex-start;
+     justify-content:flex-start; padding:20px 22px; }
   .card.wdg.weatherw { width:362px; }
-  .wdg .dnum { font:200 78px -apple-system,"SF Pro Display",sans-serif; line-height:0.92;
-               color:rgb(var(--c41)); letter-spacing:-0.04em; }
-  .wdg .dday { font:700 21px -apple-system,sans-serif; color:rgb(var(--c33)); }
-  .wdg .dmon { font:700 21px -apple-system,sans-serif; color:rgba(var(--c39),0.85); }
+  /* one left edge: the weekday, the month and the number all start on it */
+  .wdg .dhead { display:flex; gap:7px; align-items:baseline; line-height:1; }
+  .wdg .dnum { font:200 104px -apple-system,"SF Pro Display",sans-serif;
+               line-height:0.86; color:rgb(var(--c41)); letter-spacing:-0.055em;
+               margin-top:10px; }
+  .wdg .dday { font:700 23px -apple-system,sans-serif; color:rgb(var(--c22));
+               letter-spacing:-0.01em; }
+  .wdg .dmon { font:700 23px -apple-system,sans-serif; color:rgba(var(--c39),0.62);
+               letter-spacing:-0.01em; }
   .cursor { position:absolute; width:28px; height:28px; margin:-14px 0 0 -14px;
             border-radius:50%; border:2.5px solid rgba(var(--c22),0.9);
             background:rgba(var(--c22),0.12); pointer-events:none; z-index:999; }
@@ -2030,16 +2042,20 @@ function paintWidget(w) {
   const box = w.el.firstElementChild;
   const now = new Date();
   if (w.wkind === "date") {
+    // trimmed to three letters so the head row is always the same width
+    // (en-GB returns "Sept", which threw the alignment out)
+    const dy = now.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 3);
+    const mo = now.toLocaleDateString(undefined, { month: "short" }).slice(0, 3);
     box.innerHTML =
-      `<div><span class="dday">${now.toLocaleDateString(undefined,{weekday:"short"})}</span> ` +
-      `<span class="dmon">${now.toLocaleDateString(undefined,{month:"short"})}</span></div>` +
+      `<div class="dhead"><span class="dday">${escT(dy)}</span>` +
+      `<span class="dmon">${escT(mo)}</span></div>` +
       `<div class="dnum">${now.getDate()}</div>`;
     return;
   }
   if (w.wkind === "clock") {
     let cv = box.querySelector("canvas");
     if (!cv) { box.innerHTML = ""; cv = document.createElement("canvas");
-               cv.width = cv.height = 320; cv.style.width = cv.style.height = "160px";
+               cv.width = cv.height = 320; cv.style.width = cv.style.height = "158px";
                box.appendChild(cv); }
     drawClock(cv, now);
     return;
