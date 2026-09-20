@@ -116,7 +116,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   #bgfx, #bgimg { display:none; z-index:0; }
   body.bgon #bgfx { display:block; }
   body.bgdirect #bgfx { display:none; }
-  body.bgdirect #bgimg { display:block; }
+  /* the mirror belongs to the CAMERA, and this path has no camera in
+     it, so a backdrop shown directly must not inherit the flip */
+  body.bgdirect #bgimg { display:block; transform:none; }
   body.bgon #cam { opacity:0; }   /* still decoding, just not shown */
   .bgsw { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px;
           max-height:268px; overflow-y:auto; padding-right:4px; }
@@ -2094,6 +2096,9 @@ const BG = {
 
   render(now) {
     if (!this.on || !cam.videoWidth) return;
+    // shown as a real <img>: the canvas is hidden, so drawing into it
+    // would be a full-resolution blit a frame, for nothing
+    if (document.body.classList.contains("bgdirect")) return;
     if (!this.hideMe && !this.seg) return;
     this.init();
     // FULL resolution. The old 960px working size was then stretched by
@@ -2209,7 +2214,14 @@ const BG = {
         const ir = this.img.naturalWidth / this.img.naturalHeight, cr = W / H;
         let dw = W, dh = H;
         if (ir > cr) dw = H * ir; else dh = W / ir;
+        // The canvas is mirrored by CSS so the PERSON reads correctly.
+        // That flip lands on the backdrop too, which is why every photo
+        // backdrop came out reversed. Pre-flip it here and the two
+        // cancel, so the wallpaper reads the right way round either way.
+        this.imgx.save();
+        this.imgx.translate(W, 0); this.imgx.scale(-1, 1);
         this.imgx.drawImage(this.img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        this.imgx.restore();
         this.imgKey = key;
       }
       this.bgx.drawImage(this.imgc, 0, 0);
