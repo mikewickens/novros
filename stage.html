@@ -226,7 +226,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                    filter:drop-shadow(0 2px 5px rgba(0,0,0,0.75)); }
   .cursor.pointing { background:none; border:none; box-shadow:none; transform:none; }
   .cursor.pointing .arrow { display:block; }
-  .cursor.pointing .dwell { display:none; }
+  /* the dwell ring becomes the hover-to-click charge, drawn around the
+     arrow's tip so the feedback sits exactly where you are aiming */
+  .cursor.pointing .dwell { display:block; inset:-12px; opacity:0.9; }
   .cursor.clicking .arrow { background:#ffffff; transform:scale(0.86); }
   .cursor .dwell { position:absolute; inset:-7px; border-radius:50%;
                    background:conic-gradient(#8ff0e4 calc(var(--p)*360deg), transparent 0);
@@ -389,7 +391,15 @@ const TUNE = {
                          // mirror of the pinch's CONTRAST LAW, so the two
                          // poses can never be confused with each other
   pointArch:     1.30,   // index must genuinely reach out past its knuckle
-  pointDip:      1.12,   // bend it below this and back = one click
+  pointDip:      1.12,   // absolute bend floor (kept as a second chance)
+  pointDipFrac:  0.82,   // THE REAL TEST: a press is a RELATIVE drop from
+                         // how straight YOUR finger was a moment ago, so it
+                         // works for a small press and for any hand
+  pointRecFrac:  0.92,   // ... and it must come back up past this to fire
+  dwellClick:    true,   // hover-to-click: the guaranteed way in
+  dwellMs:       900,    // how long to rest on a target before it fires
+  dwellStill:    0.55,   // xSPAN  how still "resting" has to be
+  dwellCoolMs:  1100,    // pause after a dwell fires, so it cannot repeat
   pointGraceMs:  520,    // pointer stays engaged through a click's dip
   pointTapMs:    420,    // max duration of the bend that counts as a click
   doubleMs:      420,    // two clicks inside this = a double click
@@ -2389,16 +2399,61 @@ async function boot() {
         if (ptSig) cur.ptGood = now;
         cur.ptActive = (now - (cur.ptGood || 0)) < TUNE.pointGraceMs;
         if (cur.ptActive) {
-          // THE TAP: bend the index and straighten it. The grace window
-          // above keeps the pointer engaged through the bend, so the
-          // cursor does not jump away mid-click.
-          const bent = f8v < TUNE.pointDip;
+          // THE PRESS, measured RELATIVELY. An absolute floor was the
+          // wrong instrument: how straight a pointing finger reads
+          // depends on the person, the camera angle and the distance, so
+          // a press that is obvious to the eye may never cross a fixed
+          // number. Instead track how straight THIS finger has been over
+          // the last moment (ptPeak) and call a press a proportional drop
+          // away from it -- the same measure-the-hand-against-itself rule
+          // the rest of the gates use.
+          cur.ptPeak = f8v > (cur.ptPeak || 0)
+            ? f8v                                   // straighter: adopt at once
+            : (cur.ptPeak * 0.99 + f8v * 0.01);     // ... otherwise decay slowly
+          const dipBar = cur.ptPeak * TUNE.pointDipFrac;
+          const recBar = cur.ptPeak * TUNE.pointRecFrac;
+          const bent = cur.ptBent ? f8v < recBar          // hysteresis
+                                  : (f8v < dipBar || f8v < TUNE.pointDip);
           if (bent && !cur.ptBent) { cur.ptBent = true; cur.ptDipT = now; }
           else if (!bent && cur.ptBent) {
             cur.ptBent = false;
-            if (now - (cur.ptDipT || 0) < TUNE.pointTapMs) pointClick(cur);
+            if (now - (cur.ptDipT || 0) < TUNE.pointTapMs) {
+              cur.dwT = 0; cur.dwCool = now + 400;   // a press beats a dwell
+              pointClick(cur);
+            }
           }
-        } else { cur.ptBent = false; }
+
+          // HOVER TO CLICK -- the fallback that always works. Rest the
+          // arrow on something and it fires on its own, with the ring
+          // charging at the tip so it can never feel like an accident.
+          if (TUNE.dwellClick && !cur.ptBent && now > (cur.dwCool || 0)) {
+            const moved = Math.hypot(cur.x - (cur.dwX ?? cur.x),
+                                     cur.y - (cur.dwY ?? cur.y));
+            const tgt = hitTest(cur);
+            if (tgt && moved < spanU(TUNE.dwellStill)) {
+              if (!cur.dwT) cur.dwT = now;
+              const prog = Math.min(1, (now - cur.dwT) / TUNE.dwellMs);
+              if (cur.ring) cur.ring.style.setProperty("--p", prog.toFixed(3));
+              if (prog >= 1) {
+                cur.dwT = 0; cur.dwCool = now + TUNE.dwellCoolMs;
+                if (cur.ring) cur.ring.style.setProperty("--p", "0");
+                pointSingle(cur);
+              }
+            } else {
+              cur.dwT = 0; cur.dwX = cur.x; cur.dwY = cur.y;
+              if (cur.ring) cur.ring.style.setProperty("--p", "0");
+            }
+          } else if (cur.ring) cur.ring.style.setProperty("--p", "0");
+
+          cur.ptDbg = `pt f8 ${f8v.toFixed(2)} peak ${cur.ptPeak.toFixed(2)}` +
+                      ` dip<${dipBar.toFixed(2)} ${bent ? "PRESSED" : "-"}` +
+                      ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}`;
+        } else {
+          cur.ptBent = false; cur.dwT = 0; cur.ptPeak = 0;
+          if (cur.ring) cur.ring.style.setProperty("--p", "0");
+          cur.ptDbg = `pt OFF  f8 ${f8v.toFixed(2)} back ${backMean.toFixed(2)}` +
+                      ` need f8-back>${TUNE.pointContrast} & f8>${TUNE.pointArch}`;
+        }
         cur.el.classList.toggle("pointing", !!cur.ptActive);
         cur.el.classList.toggle("clicking", !!cur.ptBent);
 
@@ -2936,6 +2991,7 @@ async function boot() {
           dbg.textContent = `mode ${MODE}\nfps ${fps}\nhands ${res.landmarks.length}` +
             `\npinch ${ratio.toFixed(2)} ${cur.pinched ? "CLOSED" : "open"}` +
             `\npalm ${cur.palmOpen ? "OPEN" : "-"}${cur.fpSplay ? " CLAW" : ""} pull ph${cur.fp ? cur.fp.ph : 0}` +
+            `\n${cur.ptDbg || ""}` +
             `\n${cur.fpDbg || ""}` + (SAMPLED ? `\n${SAMPLED}` : "");
       });
       Object.keys(cursors).map(Number).forEach(i => {
