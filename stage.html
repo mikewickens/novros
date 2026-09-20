@@ -734,8 +734,11 @@ const TUNE = {
   // reliable measurement in the whole tracker.
   pressBend:     false,  // the finger-bend press. OFF: it latched on
                          // tracker jitter and would not let go
-  pressGap:      0.46,   // thumb-to-index gap, over the hand's own span
-  pressRelease:  1.38,   // x pressGap -- how far back out it must come
+  pressFrac:     0.58,   // press when the gap closes to this much of how
+                         // open YOUR hand rests -- measured, not guessed
+  pressOut:      0.80,   // and release when it opens back past this
+  pressGap:      0.46,   // (unused while the adaptive gap is in charge)
+  pressRelease:  1.38,
   pointDipFrac:  0.82,   // the bend test, kept as a second way in: a
                          // how straight YOUR finger was a moment ago, so it
                          // works for a small press and for any hand
@@ -3910,8 +3913,11 @@ function systemHand(cur, lms, now) {
   const open = a.f8 > A && a.f12 > A && a.f16 > A && a.f20 > A;
   const two = a.f8 > A && a.f12 > A &&
               (Math.min(a.f8, a.f12) - (a.f16 + a.f20) / 2) > TUNE.pointContrast;
-  const pinched = a.gap < (cur.sPinch ? TUNE.pressGap * TUNE.pressRelease
-                                      : TUNE.pressGap);
+  if (!cur.sPinch) {
+    cur.sBase = cur.sBase == null ? a.gap : cur.sBase * 0.97 + a.gap * 0.03;
+  }
+  const sb = cur.sBase == null ? 0.7 : Math.max(0.25, cur.sBase);
+  const pinched = a.gap < sb * (cur.sPinch ? TUNE.pressOut : TUNE.pressFrac);
   const cool = k => now > (cur.sCool || 0);
   const fire = ms => { cur.sCool = now + ms; };
 
@@ -4627,9 +4633,24 @@ async function boot() {
           const recBar = cur.ptPeak * TUNE.pointRecFrac;
           // EITHER signature presses: the thumb closing on the index, or
           // the index itself bending. Whichever your hand does first.
-          const thumbIn = cur.ptBent
-            ? ratio < TUNE.pressGap * TUNE.pressRelease
-            : ratio < TUNE.pressGap;
+          // THE GAP IS RELATIVE TO YOUR OWN OPEN HAND. A fixed
+          // threshold cannot work: seen from the side, the thumb-index
+          // gap is foreshortened, so a resting pointing hand can already
+          // read below any number chosen from a front-on camera -- and
+          // then the button is simply always down, which is why a window
+          // grabbed itself the moment the hand reached it.
+          //
+          // The baseline only moves while the button is UP, so a press
+          // can never drag it down after itself and latch, the way the
+          // bend test did.
+          if (!cur.ptBent) {
+            cur.gapBase = cur.gapBase == null ? ratio
+                        : cur.gapBase * 0.97 + ratio * 0.03;
+          }
+          const base = cur.gapBase == null ? 0.7 : Math.max(0.25, cur.gapBase);
+          const gEnter = base * TUNE.pressFrac;
+          const gExit = base * TUNE.pressOut;
+          const thumbIn = cur.ptBent ? ratio < gExit : ratio < gEnter;
           // THE BEND TEST LATCHES, so it is off by default. ptPeak
           // adopts a new maximum instantly and decays at 1% a frame, so
           // it sits at the top of the tracker's jitter. Release wanted
@@ -4727,7 +4748,8 @@ async function boot() {
             cur.ptDrag = null;
           }
 
-          cur.ptDbg = `pt gap ${ratio.toFixed(2)}<${TUNE.pressGap}` +
+          cur.ptDbg = `pt gap ${ratio.toFixed(2)} rest ${base.toFixed(2)}` +
+                      ` press<${gEnter.toFixed(2)}` +
                       ` f8 ${f8v.toFixed(2)} dip<${dipBar.toFixed(2)}` +
                       ` ${bent ? (thumbIn ? "PRESSED(thumb)" : "PRESSED(bend)") : "-"}` +
                       ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}` +
