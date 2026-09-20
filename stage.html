@@ -311,6 +311,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
               border:1.5px solid rgba(var(--c33),0.42);
               box-shadow:0 14px 48px rgba(0,0,0,0.45), 0 0 30px rgba(var(--c33),0.14); }
   .card.wdg .win { padding:18px 20px; }
+  .card.gamew { width:auto; padding:10px 10px 8px; border-radius:16px;
+                background:linear-gradient(168deg, rgba(var(--c30),0.16), rgba(var(--c5),0.62));
+                border:1.5px solid rgba(var(--c33),0.4); }
+  .card.gamew .gtitle { font:700 10px "SF Mono",Menlo,monospace; letter-spacing:0.2em;
+                        color:rgba(var(--c22),0.95); text-transform:uppercase;
+                        padding:2px 2px 8px; }
+  .card.gamew canvas { display:block; border-radius:9px; }
   .wdg .wlbl { font:600 10.5px "SF Mono",Menlo,monospace; letter-spacing:0.16em;
                color:rgba(var(--c39),0.72); text-transform:uppercase; }
   .wdg .wbig { font:300 62px -apple-system,"SF Pro Display",sans-serif; line-height:1;
@@ -2397,6 +2404,480 @@ function buildBgPicker() {
   });
 }
 
+// ============================================================
+// NOVROS GAMES -- Tetris, Space Invaders, Pac-Man
+// ------------------------------------------------------------
+// Written here rather than vendored: each is a few hundred lines of
+// canvas, and pulling in three outside projects would mean three sets of
+// dependencies and licences for something this size. They are ordinary
+// board items, so every plane already moves, scales, rotates and closes
+// them, and they take their colours from the live theme.
+// ============================================================
+const GAME_KINDS = {
+  tetris:   { title: "Tetris",         body: "stack and clear" },
+  invaders: { title: "Space Invaders", body: "hold the line" },
+  pacman:   { title: "Pac-Man",        body: "eat the dots" },
+};
+let lastGameId = 0;
+
+function themeRGB(name, fallback) {
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue(name).trim();
+  return `rgb(${v || fallback})`;
+}
+
+// ---------------------------------------------------------------- TETRIS
+function gameTetris() {
+  const COLS = 10, ROWS = 20, CELL = 17, PAD = 10, SIDE = 84;
+  const SHAPES = {
+    I: [[1, 1, 1, 1]], O: [[1, 1], [1, 1]], T: [[0, 1, 0], [1, 1, 1]],
+    S: [[0, 1, 1], [1, 1, 0]], Z: [[1, 1, 0], [0, 1, 1]],
+    J: [[1, 0, 0], [1, 1, 1]], L: [[0, 0, 1], [1, 1, 1]],
+  };
+  const HUE = { I: 186, O: 48, T: 288, S: 130, Z: 0, J: 220, L: 28 };
+  const keys = Object.keys(SHAPES);
+  const rot = m => m[0].map((_, i) => m.map(r => r[i]).reverse());
+  let grid, piece, next, px, py, drop, fall, score, lines, level, over, paused;
+
+  const spawn = () => {
+    piece = next || keys[(Math.random() * 7) | 0];
+    next = keys[(Math.random() * 7) | 0];
+    cur = SHAPES[piece].map(r => r.slice());
+    px = ((COLS - cur[0].length) / 2) | 0; py = 0;
+    if (hits(cur, px, py)) over = true;
+  };
+  let cur = null;
+  const hits = (m, ox, oy) => {
+    for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) {
+      if (!m[y][x]) continue;
+      const gx = ox + x, gy = oy + y;
+      if (gx < 0 || gx >= COLS || gy >= ROWS) return true;
+      if (gy >= 0 && grid[gy][gx]) return true;
+    }
+    return false;
+  };
+  const merge = () => {
+    cur.forEach((r, y) => r.forEach((v, x) => {
+      if (v && py + y >= 0) grid[py + y][px + x] = piece;
+    }));
+    let cleared = 0;
+    for (let y = ROWS - 1; y >= 0; y--) {
+      if (grid[y].every(c => c)) {
+        grid.splice(y, 1); grid.unshift(new Array(COLS).fill(0));
+        cleared++; y++;
+      }
+    }
+    if (cleared) {
+      lines += cleared;
+      score += [0, 100, 300, 500, 800][cleared] * level;
+      level = 1 + ((lines / 10) | 0);
+      fall = Math.max(0.06, 0.6 - (level - 1) * 0.05);
+    }
+    spawn();
+  };
+  const reset = () => {
+    grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
+    next = null; score = 0; lines = 0; level = 1; fall = 0.6; drop = 0;
+    over = false; paused = false; spawn();
+  };
+  reset();
+
+  return {
+    w: PAD * 2 + COLS * CELL + SIDE, h: PAD * 2 + ROWS * CELL,
+    get paused() { return paused || over; },
+    step(dt) {
+      drop += dt;
+      if (drop >= fall) { drop = 0; if (!hits(cur, px, py + 1)) py++; else merge(); }
+    },
+    key(k) {
+      if (over) { if (k === "Enter" || k === " ") { reset(); return true; } return false; }
+      if (k === "p" || k === "P") { paused = !paused; return true; }
+      if (paused) return false;
+      if (k === "ArrowLeft") { if (!hits(cur, px - 1, py)) px--; return true; }
+      if (k === "ArrowRight") { if (!hits(cur, px + 1, py)) px++; return true; }
+      if (k === "ArrowDown") { if (!hits(cur, px, py + 1)) { py++; drop = 0; } return true; }
+      if (k === "ArrowUp" || k === "x") {
+        const r = rot(cur);
+        for (const kick of [0, -1, 1, -2, 2])
+          if (!hits(r, px + kick, py)) { cur = r; px += kick; break; }
+        return true;
+      }
+      if (k === " ") { while (!hits(cur, px, py + 1)) py++; merge(); drop = 0; return true; }
+      return false;
+    },
+    draw(x) {
+      const W = this.w, H = this.h;
+      const ink = themeRGB("--c41", "235,250,250");
+      const dim = themeRGB("--c39", "230,255,240");
+      x.fillStyle = "rgba(0,0,0,0.30)"; x.fillRect(0, 0, W, H);
+      x.strokeStyle = "rgba(255,255,255,0.10)"; x.lineWidth = 1;
+      x.strokeRect(PAD - 0.5, PAD - 0.5, COLS * CELL + 1, ROWS * CELL + 1);
+      const cellAt = (gx, gy, p, ghost) => {
+        const X = PAD + gx * CELL, Y = PAD + gy * CELL;
+        x.fillStyle = ghost ? `hsla(${HUE[p]},70%,62%,0.18)` : `hsl(${HUE[p]} 72% 58%)`;
+        x.fillRect(X + 1, Y + 1, CELL - 2, CELL - 2);
+        if (!ghost) {
+          x.fillStyle = "rgba(255,255,255,0.22)";
+          x.fillRect(X + 1, Y + 1, CELL - 2, 3);
+        }
+      };
+      grid.forEach((r, gy) => r.forEach((v, gx) => { if (v) cellAt(gx, gy, v); }));
+      if (!over) {
+        let gy = py; while (!hits(cur, px, gy + 1)) gy++;
+        cur.forEach((r, y) => r.forEach((v, cx) => {
+          if (v && gy + y >= 0) cellAt(px + cx, gy + y, piece, true);
+        }));
+        cur.forEach((r, y) => r.forEach((v, cx) => {
+          if (v && py + y >= 0) cellAt(px + cx, py + y, piece);
+        }));
+      }
+      const sx = PAD + COLS * CELL + 14;
+      x.fillStyle = dim; x.font = '600 9px "SF Mono",Menlo,monospace';
+      x.fillText("SCORE", sx, PAD + 12);
+      x.fillStyle = ink; x.font = '700 17px -apple-system,sans-serif';
+      x.fillText(String(score), sx, PAD + 32);
+      x.fillStyle = dim; x.font = '600 9px "SF Mono",Menlo,monospace';
+      x.fillText("LINES", sx, PAD + 56); x.fillText("LEVEL", sx, PAD + 96);
+      x.fillStyle = ink; x.font = '700 15px -apple-system,sans-serif';
+      x.fillText(String(lines), sx, PAD + 74); x.fillText(String(level), sx, PAD + 114);
+      x.fillStyle = dim; x.font = '600 9px "SF Mono",Menlo,monospace';
+      x.fillText("NEXT", sx, PAD + 142);
+      if (next) SHAPES[next].forEach((r, y) => r.forEach((v, cx) => {
+        if (!v) return;
+        x.fillStyle = `hsl(${HUE[next]} 72% 58%)`;
+        x.fillRect(sx + cx * 12, PAD + 152 + y * 12, 10, 10);
+      }));
+      x.fillStyle = dim; x.font = '500 8px "SF Mono",Menlo,monospace';
+      x.fillText("← → move", sx, H - 46);
+      x.fillText("↑ rotate", sx, H - 34);
+      x.fillText("space drop", sx, H - 22);
+      x.fillText("P pause", sx, H - 10);
+      if (over || paused) {
+        x.fillStyle = "rgba(0,0,0,0.66)"; x.fillRect(0, 0, W, H);
+        x.fillStyle = ink; x.textAlign = "center";
+        x.font = '700 20px -apple-system,sans-serif';
+        x.fillText(over ? "GAME OVER" : "PAUSED", W / 2, H / 2 - 4);
+        x.font = '500 11px "SF Mono",Menlo,monospace';
+        x.fillText(over ? "press ENTER" : "press P", W / 2, H / 2 + 18);
+        x.textAlign = "left";
+      }
+    },
+  };
+}
+
+// -------------------------------------------------------------- INVADERS
+function gameInvaders() {
+  const W = 300, H = 340, COLS = 8, ROWS = 4;
+  let inv, ix, iy, idir, istep, bullets, bombs, ship, score, lives, over, won, paused, fireCool;
+  const reset = (keepScore) => {
+    inv = [];
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+      inv.push({ c, r, alive: true });
+    ix = 0; iy = 0; idir = 1; istep = 0;
+    bullets = []; bombs = []; ship = W / 2;
+    if (!keepScore) { score = 0; lives = 3; }
+    over = false; won = false; paused = false; fireCool = 0;
+  };
+  reset();
+  const left = () => Math.min(...inv.filter(i => i.alive).map(i => i.c));
+  const right = () => Math.max(...inv.filter(i => i.alive).map(i => i.c));
+  const IX = i => 28 + i.c * 30 + ix, IY = i => 40 + i.r * 26 + iy;
+
+  return {
+    w: W, h: H,
+    get paused() { return paused || over || won; },
+    step(dt) {
+      fireCool = Math.max(0, fireCool - dt);
+      const alive = inv.filter(i => i.alive);
+      if (!alive.length) { won = true; return; }
+      istep += dt * (1.1 + (ROWS * COLS - alive.length) * 0.075);
+      if (istep > 1) {
+        istep = 0; ix += idir * 12;
+        if (28 + right() * 30 + ix > W - 30 || 28 + left() * 30 + ix < 14) {
+          idir *= -1; ix += idir * 12; iy += 16;
+        }
+        const s = alive[(Math.random() * alive.length) | 0];
+        if (Math.random() < 0.55) bombs.push({ x: IX(s), y: IY(s), v: 120 });
+      }
+      bullets.forEach(b => b.y -= 420 * dt);
+      bombs.forEach(b => b.y += b.v * dt);
+      bullets = bullets.filter(b => b.y > 0);
+      bombs = bombs.filter(b => {
+        if (b.y > H - 26 && Math.abs(b.x - ship) < 16) {
+          lives--; if (lives <= 0) over = true; return false;
+        }
+        return b.y < H;
+      });
+      bullets = bullets.filter(b => {
+        for (const i of inv) {
+          if (!i.alive) continue;
+          if (Math.abs(b.x - IX(i)) < 13 && Math.abs(b.y - IY(i)) < 11) {
+            i.alive = false; score += (ROWS - i.r) * 10; return false;
+          }
+        }
+        return true;
+      });
+      if (alive.some(i => IY(i) > H - 44)) over = true;
+    },
+    key(k, held) {
+      if (over || won) { if (k === "Enter" || k === " ") { reset(over ? false : true); return true; } return false; }
+      if (k === "p" || k === "P") { paused = !paused; return true; }
+      if (paused) return false;
+      if (k === "ArrowLeft") { ship = Math.max(16, ship - 22); return true; }
+      if (k === "ArrowRight") { ship = Math.min(W - 16, ship + 22); return true; }
+      if (k === " ") {
+        if (!fireCool) { bullets.push({ x: ship, y: H - 30 }); fireCool = 0.28; }
+        return true;
+      }
+      return false;
+    },
+    draw(x) {
+      const ink = themeRGB("--c41", "235,250,250");
+      const acc = themeRGB("--c22", "111,229,214");
+      const dim = themeRGB("--c39", "230,255,240");
+      x.fillStyle = "rgba(0,0,0,0.34)"; x.fillRect(0, 0, W, H);
+      x.fillStyle = dim; x.font = '600 9px "SF Mono",Menlo,monospace';
+      x.fillText("SCORE " + score, 10, 14);
+      x.fillText("LIVES " + "▲".repeat(Math.max(0, lives)), W - 82, 14);
+      inv.forEach(i => {
+        if (!i.alive) return;
+        const X = IX(i), Y = IY(i);
+        x.fillStyle = `hsl(${186 - i.r * 26} 70% ${58 + i.r * 3}%)`;
+        x.fillRect(X - 9, Y - 6, 18, 9);
+        x.fillRect(X - 12, Y - 3, 3, 6); x.fillRect(X + 9, Y - 3, 3, 6);
+        x.fillRect(X - 6, Y + 3, 3, 3); x.fillRect(X + 3, Y + 3, 3, 3);
+      });
+      x.fillStyle = acc;
+      x.beginPath(); x.moveTo(ship, H - 34);
+      x.lineTo(ship - 14, H - 20); x.lineTo(ship + 14, H - 20);
+      x.closePath(); x.fill();
+      x.fillRect(ship - 2, H - 40, 4, 7);
+      x.fillStyle = ink;
+      bullets.forEach(b => x.fillRect(b.x - 1.5, b.y - 7, 3, 9));
+      x.fillStyle = "hsl(2 78% 62%)";
+      bombs.forEach(b => x.fillRect(b.x - 1.5, b.y, 3, 8));
+      x.fillStyle = dim; x.font = '500 8px "SF Mono",Menlo,monospace';
+      x.textAlign = "center";
+      x.fillText("← → move · space fire · P pause", W / 2, H - 5);
+      if (over || won || paused) {
+        x.fillStyle = "rgba(0,0,0,0.68)"; x.fillRect(0, 0, W, H);
+        x.fillStyle = ink; x.font = '700 20px -apple-system,sans-serif';
+        x.fillText(over ? "GAME OVER" : won ? "WAVE CLEAR" : "PAUSED", W / 2, H / 2 - 4);
+        x.font = '500 11px "SF Mono",Menlo,monospace';
+        x.fillText(over || won ? "press ENTER" : "press P", W / 2, H / 2 + 18);
+      }
+      x.textAlign = "left";
+    },
+  };
+}
+
+// ---------------------------------------------------------------- PAC-MAN
+function gamePacman() {
+  const MAZE = [
+    "###################",
+    "#........#........#",
+    "#.##.###.#.###.##.#",
+    "#.................#",
+    "#.##.#.#####.#.##.#",
+    "#....#...#...#....#",
+    "####.###.#.###.####",
+    "####.#.......#.####",
+    "####.#.#####.#.####",
+    "#........#........#",
+    "####.#.#####.#.####",
+    "####.#.......#.####",
+    "####.###.#.###.####",
+    "#........#........#",
+    "#.##.###.#.###.##.#",
+    "#o...............o#",
+    "###################",
+  ];
+  const R = MAZE.length, C = MAZE[0].length, CELL = 15, TOP = 20;
+  let cells, pac, ghosts, score, lives, over, won, paused, frightened, mouth;
+  const wall = (c, r) => r < 0 || r >= R || c < 0 || c >= C || cells[r][c] === "#";
+  const reset = (full) => {
+    cells = MAZE.map(row => row.split(""));
+    pac = { c: 9, r: 15, x: 9, y: 15, d: [0, 0], want: [0, 0] };
+    ghosts = [[9, 3], [9, 7], [4, 9], [14, 9]].map(([c, r], i) => ({
+      c, r, x: c, y: r, d: [0, -1], hue: [0, 320, 186, 32][i], home: [c, r],
+    }));
+    if (full) { score = 0; lives = 3; }
+    over = false; won = false; paused = false; frightened = 0; mouth = 0;
+  };
+  reset(true);
+  const centred = o => Math.abs(o.x - o.c) < 0.02 && Math.abs(o.y - o.r) < 0.02;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+  return {
+    w: C * CELL, h: TOP + R * CELL,
+    get paused() { return paused || over || won; },
+    step(dt) {
+      const SP = 4.6;
+      frightened = Math.max(0, frightened - dt);
+      if (centred(pac)) {
+        pac.x = pac.c; pac.y = pac.r;
+        if (!wall(pac.c + pac.want[0], pac.r + pac.want[1])) pac.d = pac.want.slice();
+        if (wall(pac.c + pac.d[0], pac.r + pac.d[1])) pac.d = [0, 0];
+        const ch = cells[pac.r][pac.c];
+        if (ch === ".") { cells[pac.r][pac.c] = " "; score += 10; }
+        else if (ch === "o") { cells[pac.r][pac.c] = " "; score += 50; frightened = 7; }
+        if (!cells.some(row => row.includes(".") || row.includes("o"))) won = true;
+      }
+      pac.x += pac.d[0] * SP * dt; pac.y += pac.d[1] * SP * dt;
+      if (pac.x < -0.5) { pac.x = C - 0.5; pac.c = C - 1; }
+      if (pac.x > C - 0.5) { pac.x = -0.5; pac.c = 0; }
+      pac.c = Math.round(pac.x); pac.r = Math.round(pac.y);
+      mouth += dt * 9;
+
+      ghosts.forEach(g => {
+        const gs = frightened ? 2.6 : 3.7;
+        if (centred(g)) {
+          g.x = g.c; g.y = g.r;
+          // greedy chase, never reversing unless it is the only way out
+          const opts = dirs.filter(d => !wall(g.c + d[0], g.r + d[1]) &&
+            !(d[0] === -g.d[0] && d[1] === -g.d[1]));
+          const pick = (opts.length ? opts : dirs.filter(d => !wall(g.c + d[0], g.r + d[1])))
+            .map(d => ({
+              d, s: Math.hypot(g.c + d[0] - pac.c, g.r + d[1] - pac.r) *
+                   (frightened ? -1 : 1) + Math.random() * 0.6,
+            })).sort((a, b) => a.s - b.s)[0];
+          if (pick) g.d = pick.d;
+        }
+        g.x += g.d[0] * gs * dt; g.y += g.d[1] * gs * dt;
+        g.c = Math.round(g.x); g.r = Math.round(g.y);
+        if (Math.hypot(g.x - pac.x, g.y - pac.y) < 0.62) {
+          if (frightened) { score += 200; g.c = g.home[0]; g.r = g.home[1]; g.x = g.c; g.y = g.r; }
+          else {
+            lives--;
+            if (lives <= 0) over = true;
+            else {
+              pac.c = 9; pac.r = 15; pac.x = 9; pac.y = 15; pac.d = [0, 0]; pac.want = [0, 0];
+              ghosts.forEach(h => { h.c = h.home[0]; h.r = h.home[1]; h.x = h.c; h.y = h.r; });
+            }
+          }
+        }
+      });
+    },
+    key(k) {
+      if (over || won) { if (k === "Enter" || k === " ") { reset(true); return true; } return false; }
+      if (k === "p" || k === "P") { paused = !paused; return true; }
+      if (paused) return false;
+      const m = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
+      if (m) { pac.want = m; return true; }
+      return false;
+    },
+    draw(x) {
+      const W = this.w, H = this.h;
+      const ink = themeRGB("--c41", "235,250,250");
+      const acc = themeRGB("--c22", "111,229,214");
+      const dim = themeRGB("--c39", "230,255,240");
+      x.fillStyle = "rgba(0,0,0,0.38)"; x.fillRect(0, 0, W, H);
+      x.fillStyle = dim; x.font = '600 9px "SF Mono",Menlo,monospace';
+      x.fillText("SCORE " + score, 8, 13);
+      x.fillText("●".repeat(Math.max(0, lives)), W - 40, 13);
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        const X = c * CELL, Y = TOP + r * CELL, ch = cells[r][c];
+        if (ch === "#") {
+          x.fillStyle = `rgba(${getComputedStyle(document.documentElement)
+            .getPropertyValue("--c22").trim() || "111,229,214"},0.30)`;
+          x.fillRect(X + 1.5, Y + 1.5, CELL - 3, CELL - 3);
+        } else if (ch === ".") {
+          x.fillStyle = dim;
+          x.fillRect(X + CELL / 2 - 1.5, Y + CELL / 2 - 1.5, 3, 3);
+        } else if (ch === "o") {
+          x.fillStyle = ink; x.beginPath();
+          x.arc(X + CELL / 2, Y + CELL / 2, 4.5, 0, 7); x.fill();
+        }
+      }
+      const px = pac.x * CELL + CELL / 2, py = TOP + pac.y * CELL + CELL / 2;
+      const open = 0.06 + Math.abs(Math.sin(mouth)) * 0.30;
+      const ang = Math.atan2(pac.d[1], pac.d[0]);
+      x.fillStyle = "hsl(48 92% 60%)"; x.beginPath();
+      x.moveTo(px, py);
+      x.arc(px, py, CELL * 0.46, ang + open * Math.PI, ang - open * Math.PI);
+      x.closePath(); x.fill();
+      ghosts.forEach(g => {
+        const gx = g.x * CELL + CELL / 2, gy = TOP + g.y * CELL + CELL / 2, rr = CELL * 0.44;
+        x.fillStyle = frightened
+          ? (frightened < 2 && ((frightened * 6) | 0) % 2 ? "#ffffff" : "hsl(230 70% 58%)")
+          : `hsl(${g.hue} 74% 62%)`;
+        x.beginPath();
+        x.arc(gx, gy - 1, rr, Math.PI, 0);
+        x.lineTo(gx + rr, gy + rr * 0.8);
+        for (let i = 0; i < 3; i++)
+          x.lineTo(gx + rr - (i * 2 + 1) * rr / 3, gy + rr * (i % 2 ? 0.8 : 0.4));
+        x.lineTo(gx - rr, gy + rr * 0.8);
+        x.closePath(); x.fill();
+        x.fillStyle = "#fff";
+        x.beginPath(); x.arc(gx - rr * 0.34, gy - rr * 0.2, rr * 0.26, 0, 7); x.fill();
+        x.beginPath(); x.arc(gx + rr * 0.34, gy - rr * 0.2, rr * 0.26, 0, 7); x.fill();
+      });
+      if (over || won || paused) {
+        x.fillStyle = "rgba(0,0,0,0.7)"; x.fillRect(0, 0, W, H);
+        x.fillStyle = ink; x.textAlign = "center";
+        x.font = '700 19px -apple-system,sans-serif';
+        x.fillText(over ? "GAME OVER" : won ? "CLEARED" : "PAUSED", W / 2, H / 2 - 4);
+        x.font = '500 11px "SF Mono",Menlo,monospace';
+        x.fillText(over || won ? "press ENTER" : "press P", W / 2, H / 2 + 18);
+        x.textAlign = "left";
+      }
+    },
+  };
+}
+
+const GAME_IMPL = { tetris: gameTetris, invaders: gameInvaders, pacman: gamePacman };
+
+function makeGame(kind) {
+  const ex = items.find(i => i.type === "game" && i.gkind === kind && i.el.isConnected);
+  if (ex) { killItem(ex); return null; }
+  const g = GAME_IMPL[kind]();
+  const el = document.createElement("div");
+  el.className = "card gamew";
+  el.innerHTML = `<div class="gtitle">${escT(GAME_KINDS[kind].title)}</div>`;
+  const cv = document.createElement("canvas");
+  const S = 2;                                  // drawn at 2x, shown at 1x
+  cv.width = g.w * S; cv.height = g.h * S;
+  cv.style.width = g.w + "px"; cv.style.height = g.h + "px";
+  el.appendChild(cv);
+  closable(el);
+  BEHIND.appendChild(el);
+  const ctx = cv.getContext("2d");
+  const it = {
+    el, id: UID++, type: "game", gkind: kind, game: g,
+    def: { title: GAME_KINDS[kind].title, file: "" },
+    x: innerWidth * 0.5, y: innerHeight * 0.5, scale: 1, vx: 0, vy: 0,
+    grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null,
+  };
+  it.anim = { k: "in", t: 0 }; el.style.opacity = "0.05";
+  items.push(it);
+  lastGameId = it.id;
+  let last = performance.now();
+  const tick = now => {
+    if (!el.isConnected) return;                // the window closed: stop
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    if (!g.paused) g.step(dt);
+    ctx.save(); ctx.scale(S, S); g.draw(ctx); ctx.restore();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  return it;
+}
+
+// Keys reach the game you touched last, and are taken in the CAPTURE
+// phase so they beat the board's own shortcuts -- P means pause inside a
+// game, not the pose sampler.
+addEventListener("keydown", e => {
+  const g = items.find(i => i.id === lastGameId && i.type === "game" && i.el.isConnected);
+  if (!g) return;
+  if (g.game.key && g.game.key(e.key)) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+addEventListener("mousedown", e => {
+  const host = e.target.closest && e.target.closest(".gamew");
+  if (!host) return;
+  const g = items.find(i => i.el === host);
+  if (g) lastGameId = g.id;
+}, true);
+
 const UIPREF = { modeBar: true };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
@@ -2618,7 +3099,8 @@ function makeWidget(kind) {
   const el = document.createElement("div");
   el.className = `card wdg ${kind}w`;
   el.innerHTML = `<div class="win"></div>`;
-  closable(el);
+  // no close button on a widget: it is furniture, not a window, and the
+  // Widgets station toggles it off the same way it put it on
   BEHIND.appendChild(el);
   const w = { el, id: UID++, type: "wdg", wkind: kind,
               def: { title: WDG_KINDS[kind].title, file: "" },
@@ -2834,6 +3316,7 @@ function novStation(m) {
     return { orb: "props", body: `${p.dirs} folders · ${p.leaves} props` };
   }
   if (m === "apps") return { orb: "apps", body: "clock · date · weather" };
+  if (m === "games") return { orb: "games", body: "tetris · invaders · pac-man" };
   if (m === "settings") return { orb: null, body: "input & controls" };
   return { orb: null, body: "empty" };
 }
@@ -2925,6 +3408,14 @@ function browserRows(b) {
       else out.push({ d: depth, t: x.title, k: "note", f: x.file });
     });
   };
+  if (b.bkind === "games") {
+    for (const k in GAME_KINDS) {
+      const on = items.some(i => i.type === "game" && i.gkind === k && i.el.isConnected);
+      out.push({ d: 0, k: "game", w: k,
+                 t: `${GAME_KINDS[k].title}${on ? "   \u00b7 playing" : ""}` });
+    }
+    return out;
+  }
   if (b.bkind === "apps") {           // the Apps station lists widgets
     for (const k in WDG_KINDS) {
       const on = items.some(i => i.type === "wdg" && i.wkind === k && i.el.isConnected);
@@ -2940,7 +3431,8 @@ function browserRows(b) {
 }
 
 function browserRowsHTML(tuples) {
-  const ICO = { dir0: "▸", dir1: "▾", note: "▤", prop: "▦", widget: "▣" };
+  const ICO = { dir0: "▸", dir1: "▾", note: "▤", prop: "▦",
+                widget: "▣", game: "▶" };
   return tuples.map(([d, t, k, o], i) =>
     `<div class="brow ${k}" data-i="${i}" style="padding-left:${18 + d * 26}px">` +
     `<span class="bico">${k === "dir" ? ICO["dir" + o] : ICO[k]}</span>` +
@@ -3008,6 +3500,7 @@ function openBrowser(kind, ox, oy) {
   if (ex) { killItem(ex); return; }
   loadTree().then(() => {
     const label = String(kind === "props" ? "Props" : kind === "apps" ? "Widgets"
+      : kind === "games" ? "Games"
       : ((CFG.orbs || [])[kind] || {}).title || "Notes").toUpperCase();
     const el = document.createElement("div");
     el.className = "panel browser";
@@ -3058,6 +3551,9 @@ function browserTap(b, cur) {
         openPanel({ def: { file: row.f, title: row.t } });
         killItem(b);   // v3.3 (his broadened rule): selecting ANYTHING
                        // closes the whole pane — only dir taps keep it
+      } else if (row.k === "game") {
+        makeGame(row.w);
+        browserRefresh(b);
       } else if (row.k === "widget") {
         toggleWidget(row.w, b.x + 480 < innerWidth - 200 ? b.x + 440 : b.x - 440, b.y);
         browserRefresh(b);          // the row relabels; the pane stays up
