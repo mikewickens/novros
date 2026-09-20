@@ -329,7 +329,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .wdg .dmon { font:700 23px -apple-system,sans-serif; color:rgba(var(--c39),0.62);
                letter-spacing:-0.01em; }
   /* ---------- SETTINGS PANEL ---------- */
-  .cfg { padding:2px 4px 20px; }
+  /* the panel body is pre-wrap so NOTES keep their line breaks; this
+     markup is real HTML, and inheriting that turned every indent and
+     newline into visible whitespace, stretching the panel to 2600px */
+  .cfg { padding:2px 4px 20px; white-space:normal; }
   .cfg h4 { margin:22px 0 10px; font:700 10px "SF Mono",Menlo,monospace;
             letter-spacing:0.2em; color:rgba(var(--c22),0.95); text-transform:uppercase;
             border-bottom:1px solid rgba(var(--c33),0.2); padding-bottom:7px; }
@@ -342,6 +345,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .cfg .sl { flex:0 0 152px; display:flex; align-items:center; gap:9px; }
   .cfg .sl output { font:600 11px "SF Mono",Menlo,monospace; width:42px;
                     text-align:right; color:rgba(var(--c22),0.95); }
+  .cfg .sl output.whex { width:64px; }
   /* an iOS-style switch, because a checkbox on glass reads as a hole */
   .sw { position:relative; flex:0 0 44px; height:25px; border-radius:13px;
         cursor:pointer; background:rgba(var(--c5),0.75);
@@ -2223,11 +2227,14 @@ function settingsHTML() {
       `<button class="ctl" data-p="${i}">${M.k}</button>`).join("")}</div>
     ${CFG_TOGGLES.slice(0, 1).map((t, i) => row(t[0], t[1], sw(0, t[2]()))).join("")}
     <h4>Colour</h4>
-    <div class="wheel"><div class="wdot"></div></div>
-    <label>Brightness</label>
-    <input class="wlum ctl" type="range" min="70" max="135" value="100">
-    <label>Presets</label><div class="wsw"></div>
-    <div class="wrow"><span class="whex"></span><button class="wrst ctl">RESET</button></div>
+    <div class="wsw"></div>
+    <div class="row"><div><div class="nm">Brightness</div>
+      <div class="hint">bends the midtones; deep stays deep</div></div>
+      <div class="sl"><input class="wlum ctl" type="range" min="70" max="135" value="100">
+      <output class="whex"></output></div></div>
+    <div class="row" style="padding-top:2px"><div class="hint">
+      The wheel, top right, picks any colour at all.</div>
+      <button class="wrst ctl">RESET</button></div>
     <h4>Background</h4>
     <div class="bgsw ctl">
       <div data-m="none" class="${BG.mode === "none" ? "on" : ""}">NONE</div>
