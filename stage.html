@@ -800,6 +800,8 @@ const TUNE = {
   // --- two-finger scroll ---
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
+  menuScale:     0.5,    // the ring and its stations, as a fraction of
+                         // the size they were drawn at
   // --- the system hand ---
   systemHand:    true,   // the LEFT hand drives the OS, not a second mouse
   swapHands:     false,  // set true if your hands come out the wrong way
@@ -1941,6 +1943,14 @@ function orbActivate(c) {
     return;
   }
   openBrowser(d.orb, c.x, c.y);
+}
+
+// Rim, then a constant gap, then the orb's own radius -- the original
+// law, but with the rim AND the orb scaling together. It used to add a
+// flat 130 for the last two terms, which is right at full size and
+// leaves the stations stranded far out as the ring shrinks.
+function orbitR(scale) {
+  return 220 * scale + 35 + 75 * scale;
 }
 
 function makeOrb(def) {
@@ -3503,9 +3513,10 @@ function ringToggle(ring) {
   defs.forEach((def, i) => {
     def.side = 1;                      // full circle: the angle carries it
     const o = makeOrb(def);
+    o.scale = ring.scale || 1;        // the stations match the ring
     // the ORBITAL CONSTRAINT in physics() owns their position from
     // here — spawn at the current target so the bloom lands true
-    const R = 200 * (ring.scale || 1) + 130;
+    const R = orbitR(ring.scale || 1);
     o.x = ring.x + Math.cos(def.ang) * R;
     o.y = ring.y + Math.sin(def.ang) * R;
     o.anim = { k: "in", t: 0, d: i * 0.07 };       // staggered bloom
@@ -3551,6 +3562,7 @@ function spawnStage(cx = 0.5, cy = 0.5) {
   items.forEach(killItem);
   const ring = makeRing();
   ring.x = innerWidth * cx; ring.y = innerHeight * cy;
+  ring.scale = TUNE.menuScale;
   return ring;
 }
 
@@ -4236,7 +4248,7 @@ function physics(dt) {
   items.forEach(o => {
     if (o.type !== "orb" || !o.el.isConnected) return;
     if (!sun) { killItem(o); return; }       // no ring, no bloom
-    const R = 200 * (sun.scale || 1) + 130;  // rim + gap + orb radius
+    const R = orbitR(sun.scale || 1);        // rim + gap + orb radius
     const tx = Math.min(innerWidth - 90, Math.max(90,
       sun.x + o.def.side * Math.cos(o.def.ang) * R));
     const ty = Math.min(innerHeight - 90, Math.max(90,
