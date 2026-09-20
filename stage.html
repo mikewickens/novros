@@ -733,7 +733,9 @@ const TUNE = {
                          // how straight YOUR finger was a moment ago, so it
                          // works for a small press and for any hand
   pointRecFrac:  0.92,   // ... and it must come back up past this to fire
-  dwellClick:    true,   // hover-to-click: the guaranteed way in
+  dwellClick:    false,  // hover-to-click. OFF: the thumb is an explicit
+                         // button now, and an interface that also fires
+                         // on its own is one you cannot rest a hand in.
   dwellMs:       140,    // rest-to-fire delay once the hand has STOPPED.
                          // Short on purpose: the safety is not the clock,
                          // it is the stopping (see dwellMoveBar).
@@ -4432,16 +4434,59 @@ async function boot() {
         // (which needs the index curled IN). Move the hand up and down
         // and the pane under the cursor scrolls with it -- so you can
         // read a folder without selecting anything in it.
-        const twoOut = TUNE.twoFingerScroll && aspect <= 6 &&
+        // ---- THE TWO BUTTONS ------------------------------------
+        // A hand behaving like a mouse. How many fingers are OUT picks
+        // the button; the thumb closing on them is the button going
+        // down. Both are lateral movements across the palm, which is
+        // what makes them read at any camera angle -- unlike pressing
+        // forward, which barely changes anything a camera can measure.
+        //
+        //   one finger  + thumb   LEFT   tap to click, hold to drag
+        //   two fingers + thumb   RIGHT  tap to flatten, hold to rotate
+        //   two fingers, no thumb        scroll
+        const twoOut = aspect <= 6 &&
                        f8v > TUNE.pointArch && f12v > TUNE.pointArch &&
                        (Math.min(f8v, f12v) - (f16v + f20v) / 2) > TUNE.pointContrast;
-        if (twoOut) {
-          const pane = hitTest(cur);
-          if (pane && pane.body) {
-            if (cur.scY != null) scrollBy(pane, -(cur.y - cur.scY) * TUNE.scrollGain);
-            cur.scY = cur.y;
+        const thumbDown = ratio < (cur.rBtn || cur.ptBent
+          ? TUNE.pressGap * TUNE.pressRelease : TUNE.pressGap);
+
+        if (twoOut && thumbDown) {                       // RIGHT BUTTON
+          cur.scY = null;
+          if (!cur.rBtn) {
+            cur.rBtn = true; cur.rMoved = false;
+            cur.rx0 = cur.x; cur.ry0 = cur.y;
+            cur.rTgt = hitTest(cur);
+            if (cur.rTgt) cur.rr0 = { x: cur.rTgt.rx || 0, y: cur.rTgt.ry || 0 };
+          } else if (cur.rTgt && cur.rTgt.el.isConnected) {
+            const dx = cur.x - cur.rx0, dy = cur.y - cur.ry0;
+            if (Math.hypot(dx, dy) > spanU(0.22)) {      // a drag, not a tap
+              cur.rMoved = true;
+              setRot(cur.rTgt, cur.rr0.x + dy * TUNE.rotGain,
+                               cur.rr0.y + dx * TUNE.rotGain, cur.rTgt.rz || 0);
+            }
+          }
+        } else {
+          if (cur.rBtn) {                                // right button up
+            // a right tap that never travelled puts the item back flat,
+            // exactly as a right-click does with the mouse
+            if (!cur.rMoved && cur.rTgt && cur.rTgt.el.isConnected) {
+              cur.rTgt.trot = { x: 0, y: 0, z: 0 }; cur.rTgt.rvy = 0;
+              const t = cur.rTgt;
+              setTimeout(() => { if (t.trot) t.trot = null; }, 500);
+            } else if (cur.rTgt) {
+              const t = cur.rTgt;
+              setTimeout(() => { t.trot = null; }, 420);
+            }
+            cur.rBtn = false; cur.rMoved = false; cur.rTgt = null;
+          }
+          if (twoOut && TUNE.twoFingerScroll) {          // SCROLL
+            const pane = hitTest(cur);
+            if (pane && pane.body) {
+              if (cur.scY != null) scrollBy(pane, -(cur.y - cur.scY) * TUNE.scrollGain);
+              cur.scY = cur.y;
+            } else cur.scY = null;
           } else cur.scY = null;
-        } else cur.scY = null;
+        }
 
         const ptSig = !twoOut && (f8v - backMean) > TUNE.pointContrast &&
                       f8v > TUNE.pointArch && aspect <= 6;
@@ -4561,7 +4606,8 @@ async function boot() {
                       ` ${bent ? (thumbIn ? "PRESSED(thumb)" : "PRESSED(bend)") : "-"}` +
                       ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}` +
                       `${cur.ptDrag && cur.ptDrag !== "none" ? " DRAGGING" : ""}` +
-                      `${cur.dwArm ? "" : " [move to re-arm]"}`;
+                      `${cur.ptDrag && cur.ptDrag !== "none" ? "" : ""}` +
+                      `${cur.rBtn ? " RIGHT" : ""}`;
         } else {
           if (cur.ptDrag) {          // pointer lost mid-drag: set it down
             if (cur.ptDrag !== "none") endGrab(cur.ptDrag, i, cur);

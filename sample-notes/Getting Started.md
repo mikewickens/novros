@@ -59,25 +59,37 @@ Hold **shift** while rotating for fine control.
 
 # Your hands
 
-Hold one finger out, the others folded, and the cursor becomes an arrow
-on your fingertip.
+The hand behaves like a mouse. **How many fingers are out picks the
+button; the thumb closing on them is the button going down.**
 
-    stop on something   it opens — a MOVING hand selects nothing
-    quick finger-press  click
-    press and hold      drag it around
-    two fingers out     scroll the pane under the cursor
-    pinch and drag      move things
-    two hands           scale
-    clap                sweep the board clean
+    one finger out            the arrow follows your fingertip
+    ...thumb touches it       LEFT BUTTON
+    ...tap                    click: open it
+    ...hold and move          drag it around
+    ...let the thumb go       drop it
 
-The important rule: **a hand in transit selects nothing**, however long
-it passes over something. The moment it comes to rest, the target fires
-almost at once. That is what makes browsing safe and choosing instant.
+    two fingers out           index and middle
+    ...move up and down       scroll the pane under the cursor
+    ...thumb touches them     RIGHT BUTTON
+    ...tap                    put a rotated thing back flat
+    ...hold and move          rotate it in 3D
+
+    pinch and drag            move things, the original way
+    two hands                 scale
+    clap                      sweep the board clean
+
+Both button signals are the thumb travelling **across** the palm. That
+is deliberate: a lateral movement reads clearly from any camera angle,
+where pressing forward barely changes anything a camera can measure.
+It is why the buttons work with the camera off to one side.
+
+Nothing fires on its own. Hover-to-click exists in Settings but is off,
+because an interface that activates where you merely rest your hand is
+one you cannot rest your hand in.
 
 Every distance the tracker measures is a multiple of your own hand's
 width on screen, so the controls feel the same on any display and at any
 distance from the camera.
-
 
 # Your head
 
