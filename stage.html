@@ -271,6 +271,19 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                 display:flex; justify-content:space-between; align-items:center; }
   .panel .bar h3 { margin:0; font-size:14px; color:rgb(var(--c26)); letter-spacing:0.08em;
                    font-family:"SF Mono",Menlo,monospace; text-transform:uppercase; }
+  /* every window carries its own close, top right */
+  .xbtn { position:absolute; top:10px; right:11px; width:26px; height:26px; padding:0;
+          border-radius:50%; cursor:pointer; z-index:6; line-height:1;
+          font:600 14px -apple-system,sans-serif;
+          color:rgba(var(--c39),0.72); background:rgba(var(--c5),0.42);
+          border:1px solid rgba(var(--c33),0.28); backdrop-filter:blur(6px);
+          -webkit-backdrop-filter:blur(6px); opacity:0.62;
+          transition:opacity .14s ease, background .14s ease, color .14s ease; }
+  .card:hover > .xbtn, .panel:hover > .xbtn { opacity:1; }
+  .xbtn:hover { background:rgba(255,105,97,0.9); color:#fff;
+                border-color:rgba(255,150,140,0.95); }
+  .panel > .xbtn { top:13px; right:14px; width:30px; height:30px; font-size:15px; }
+  body.overlay .xbtn { display:none; }   /* the broadcast has no chrome */
   .panel .close { width:30px; height:30px; border-radius:50%; text-align:center;
                   line-height:28px; border:1.5px solid rgba(var(--c22),0.65);
                   color:rgb(var(--c26)); font-size:15px; }
@@ -756,6 +769,7 @@ function makeEuro() {
 // whatever is already open. Pointing never grabs, so tracking across the
 // board can no longer drag or rotate things in passing.
 function pointSingle(cur) {
+  if (pointerHitClose(cur)) return;
   const c = hitTest(cur);
   if (!c) return;
   if (c.type === "widget" && c.def.w === "ring") {
@@ -812,10 +826,48 @@ let landmarker = null, lastVideoTs = -1, frames = 0, fps = 0, lastFpsTs = perfor
 
 let UID = 1;
 
+// A single delegate: find the window that owns the pressed button and
+// send it through the same graceful exit every other close uses.
+addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest(".xbtn");
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  const host = b.parentElement;
+  const it = items.find(i => i.el === host);
+  if (it) killItem(it);
+  else if (host) host.remove();
+}, true);
+
+// The hand and head planes do not know about DOM buttons, so give the
+// pointer the same target: resting on the X closes the window, which is
+// otherwise only reachable with a mouse.
+function pointerHitClose(cur) {
+  const el = document.elementFromPoint(cur.x, cur.y);
+  const b = el && el.closest && el.closest(".xbtn");
+  if (!b) return false;
+  const it = items.find(i => i.el === b.parentElement);
+  if (it) killItem(it);
+  return true;
+}
+
+// One close affordance for every window. A <button> on purpose: the
+// mouse layer already stands aside for real controls, so pressing this
+// cannot also grab the window underneath it.
+function closable(el) {
+  const b = document.createElement("button");
+  b.className = "xbtn";
+  b.type = "button";
+  b.title = "close";
+  b.textContent = "\u2715";
+  el.appendChild(b);
+  return el;
+}
+
 function makeCard(def) {
   const el = document.createElement("div");
   el.className = "card";
   el.innerHTML = `<h3>${escT(def.title)}</h3><p>${escT(def.body || "")}</p>`;
+  closable(el);
   BEHIND.appendChild(el);
   return { el, id: UID++, type: "card", def, x: 0, y: 0, scale: 1, vx: 0, vy: 0,
            grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
@@ -885,6 +937,7 @@ function makeImage(src, title) {
   el.innerHTML = vid
     ? `<video src="${escT(src)}" autoplay loop muted playsinline></video>`
     : `<img src="${escT(src)}" alt="">`;
+  closable(el);
   BEHIND.appendChild(el);
   el.classList.add("mat");                     // arrives as light...
   setTimeout(() => el.classList.remove("mat"), 650);   // ...resolves true
@@ -1556,6 +1609,7 @@ function makeModel(src, title, mode, lift) {
   const el = document.createElement("div");
   el.className = "card modelcard" + (mm === "holo" ? " holo" : "");
   el.innerHTML = `<canvas></canvas>`;
+  closable(el);
   BEHIND.appendChild(el);
   const it = { el, id: UID++, type: "model",
     def: { title: title || "", file: "", src, mmode: mm, lift },
@@ -2459,6 +2513,7 @@ function openSettings() {
   el.className = "panel";
   el.innerHTML = `<div class="bar"><h3>SETTINGS</h3></div>` +
                  `<div class="body"><div class="scroll">${settingsHTML()}</div></div>`;
+  closable(el);
   BEHIND.appendChild(el);
   const p = { el, id: UID++, type: "panel", isCfg: true,
     def: { title: "SETTINGS", file: "" },
@@ -2563,6 +2618,7 @@ function makeWidget(kind) {
   const el = document.createElement("div");
   el.className = `card wdg ${kind}w`;
   el.innerHTML = `<div class="win"></div>`;
+  closable(el);
   BEHIND.appendChild(el);
   const w = { el, id: UID++, type: "wdg", wkind: kind,
               def: { title: WDG_KINDS[kind].title, file: "" },
@@ -2957,6 +3013,7 @@ function openBrowser(kind, ox, oy) {
     el.className = "panel browser";
     el.innerHTML = `<div class="bar"><h3>${escT(label)}</h3></div>` +
                    `<div class="body"><div class="scroll"></div></div>`;
+    closable(el);
     BEHIND.appendChild(el);
     const b = { el, id: UID++, type: "browser", bkind: kind,
       def: { title: label, file: "" },
@@ -3044,6 +3101,7 @@ async function openPanel(card, literal) {
                             : (card.def.title || "NOTE");
   el.innerHTML = `<div class="bar"><h3>${escT(ttl)}</h3></div>` +
                  `<div class="body"><div class="scroll">${renderNote(text)}</div></div>`;
+  closable(el);
   BEHIND.appendChild(el);
   const p = { el, id: UID++, type: "panel", def: card.def, x: innerWidth * 0.5,
               y: innerHeight * 0.44, scale: 1, vx: 0, vy: 0, grabbedBy: [],
