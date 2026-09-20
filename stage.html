@@ -305,7 +305,7 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">POINT (index out, others folded) = arrow cursor · hover = open · quick finger-press = click · PRESS AND HOLD = drag it around · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll a note / RESIZE a model or image, corner-drag = resize anything · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
+<div id="hint">POINT (index out, others folded) = arrow cursor · stop on something = it opens (moving selects nothing) · PRESS AND HOLD = drag · TWO FINGERS = scroll · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll a note / RESIZE a model or image, corner-drag = resize anything · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
 
@@ -405,9 +405,16 @@ const TUNE = {
                          // works for a small press and for any hand
   pointRecFrac:  0.92,   // ... and it must come back up past this to fire
   dwellClick:    true,   // hover-to-click: the guaranteed way in
-  dwellMs:       900,    // how long to rest on a target before it fires
-  dwellStill:    0.55,   // xSPAN  how still "resting" has to be
-  dwellCoolMs:  1100,    // pause after a dwell fires, so it cannot repeat
+  dwellMs:       140,    // rest-to-fire delay once the hand has STOPPED.
+                         // Short on purpose: the safety is not the clock,
+                         // it is the stopping (see dwellMoveBar).
+  dwellMoveBar:  1.8,    // SPAN/s  above this the hand is TRAVELLING, and a
+                         // travelling hand never selects anything. This is
+                         // what makes instant selection safe to browse with.
+  dwellCoolMs:   450,    // pause after a dwell fires
+  // --- two-finger scroll ---
+  scrollGain:    1.6,    // content travel per unit of hand travel
+  twoFingerScroll: true, // index + middle out = scroll, like a trackpad
   pointGraceMs:  520,    // pointer stays engaged through a click's dip
   pointTapMs:    420,    // max duration of the bend that counts as a click
   doubleMs:      420,    // two clicks inside this = a double click
@@ -2310,7 +2317,8 @@ async function boot() {
         // 1.30 back-arch floor as the fist wall. The EMA sustained
         // read stays — lucky frames still buy nothing.
         const f8v = fR(8, 5);
-        const backMean = (fR(12, 9) + fR(16, 13) + fR(20, 17)) / 3;
+        const f12v = fR(12, 9), f16v = fR(16, 13), f20v = fR(20, 17);
+        const backMean = (f12v + f16v + f20v) / 3;
         // v3.8.4 — TWO ORIENTATION REGIMES (his profiled-pinch sample:
         // aspect 1.63 / thumb-dist 1.18 vs 2.1-5.5 / 0.4-0.7 in ALL
         // frontal samples — a rotated palm compresses the arch ratios
@@ -2402,8 +2410,27 @@ async function boot() {
         // index OUT while the back three fold in. Same two metrics, same
         // corpus, opposite sign -- so the two poses are mutually
         // exclusive by construction and cannot fight each other.
-        const ptSig = (f8v - backMean) > TUNE.pointContrast &&
+        // ---- TWO-FINGER SCROLL ----------------------------------
+        // Index AND middle out, ring and pinky folded: the trackpad
+        // idiom, and a shape that cannot be confused with a one-finger
+        // point (which needs the middle finger DOWN) or with a pinch
+        // (which needs the index curled IN). Move the hand up and down
+        // and the pane under the cursor scrolls with it -- so you can
+        // read a folder without selecting anything in it.
+        const twoOut = TUNE.twoFingerScroll && aspect <= 6 &&
+                       f8v > TUNE.pointArch && f12v > TUNE.pointArch &&
+                       (Math.min(f8v, f12v) - (f16v + f20v) / 2) > TUNE.pointContrast;
+        if (twoOut) {
+          const pane = hitTest(cur);
+          if (pane && pane.body) {
+            if (cur.scY != null) scrollBy(pane, -(cur.y - cur.scY) * TUNE.scrollGain);
+            cur.scY = cur.y;
+          } else cur.scY = null;
+        } else cur.scY = null;
+
+        const ptSig = !twoOut && (f8v - backMean) > TUNE.pointContrast &&
                       f8v > TUNE.pointArch && aspect <= 6;
+        if (twoOut) { cur.ptGood = 0; cur.dwT = 0; cur.dwArm = false; }
         if (ptSig) cur.ptGood = now;
         cur.ptActive = (now - (cur.ptGood || 0)) < TUNE.pointGraceMs;
         if (cur.ptActive) {
@@ -2435,20 +2462,37 @@ async function boot() {
           // arrow on something and it fires on its own, with the ring
           // charging at the tip so it can never feel like an accident.
           if (TUNE.dwellClick && !cur.ptBent && now > (cur.dwCool || 0)) {
-            const moved = Math.hypot(cur.x - (cur.dwX ?? cur.x),
-                                     cur.y - (cur.dwY ?? cur.y));
+            // The gate is MOTION, not time. A hand in transit selects
+            // nothing no matter what it passes over; the moment it comes
+            // to rest on something, that thing fires almost at once. So
+            // browsing is free and choosing is instant -- and the clock
+            // never has to be long enough to be safe.
+            let vNow = 0;
+            const hh1 = cur.history;
+            if (hh1.length >= 3) {
+              const a1 = hh1[hh1.length - 3], b1 = hh1[hh1.length - 1];
+              const dt1 = (b1.t - a1.t) / 1000;
+              if (dt1 > 0) vNow = Math.hypot(b1.x - a1.x, b1.y - a1.y) / dt1;
+            }
+            const travelling = vNow > spanU(TUNE.dwellMoveBar);
+            // Moving RE-ARMS selection. After something fires you must
+            // move again before anything else can, which is what stops a
+            // freshly-opened pane firing the row that lands under a
+            // resting hand.
+            if (travelling) cur.dwArm = true;
             const tgt = hitTest(cur);
-            if (tgt && moved < spanU(TUNE.dwellStill)) {
-              if (!cur.dwT) cur.dwT = now;
+            if (tgt && !travelling && cur.dwArm) {
+              if (!cur.dwT || cur.dwTgt !== tgt) { cur.dwT = now; cur.dwTgt = tgt; }
               const prog = Math.min(1, (now - cur.dwT) / TUNE.dwellMs);
               if (cur.ring) cur.ring.style.setProperty("--p", prog.toFixed(3));
               if (prog >= 1) {
-                cur.dwT = 0; cur.dwCool = now + TUNE.dwellCoolMs;
+                cur.dwT = 0; cur.dwTgt = null; cur.dwArm = false;
+                cur.dwCool = now + TUNE.dwellCoolMs;
                 if (cur.ring) cur.ring.style.setProperty("--p", "0");
                 pointSingle(cur);
               }
             } else {
-              cur.dwT = 0; cur.dwX = cur.x; cur.dwY = cur.y;
+              cur.dwT = 0; cur.dwTgt = null;
               if (cur.ring) cur.ring.style.setProperty("--p", "0");
             }
           } else if (cur.ring) cur.ring.style.setProperty("--p", "0");
@@ -2485,7 +2529,8 @@ async function boot() {
           cur.ptDbg = `pt f8 ${f8v.toFixed(2)} peak ${cur.ptPeak.toFixed(2)}` +
                       ` dip<${dipBar.toFixed(2)} ${bent ? "PRESSED" : "-"}` +
                       ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}` +
-                      `${cur.ptDrag && cur.ptDrag !== "none" ? " DRAGGING" : ""}`;
+                      `${cur.ptDrag && cur.ptDrag !== "none" ? " DRAGGING" : ""}` +
+                      `${cur.dwArm ? "" : " [move to re-arm]"}`;
         } else {
           if (cur.ptDrag) {          // pointer lost mid-drag: set it down
             if (cur.ptDrag !== "none") endGrab(cur.ptDrag, i, cur);
@@ -2493,7 +2538,7 @@ async function boot() {
           }
           cur.ptBent = false; cur.dwT = 0; cur.ptPeak = 0;
           if (cur.ring) cur.ring.style.setProperty("--p", "0");
-          cur.ptDbg = `pt OFF  f8 ${f8v.toFixed(2)} back ${backMean.toFixed(2)}` +
+          cur.ptDbg = `pt ${twoOut ? "SCROLL (2 fingers)" : "OFF"}  f8 ${f8v.toFixed(2)} back ${backMean.toFixed(2)}` +
                       ` need f8-back>${TUNE.pointContrast} & f8>${TUNE.pointArch}`;
         }
         cur.el.classList.toggle("pointing", !!cur.ptActive);
