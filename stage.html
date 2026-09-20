@@ -299,14 +299,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .card.wdg.clockw .win, .card.wdg.datew .win {
      box-sizing:border-box; height:100%; display:flex; }
   .card.wdg.clockw .win { align-items:center; justify-content:center; padding:20px; }
-  .card.wdg.datew .win { flex-direction:column; align-items:flex-start;
-     justify-content:flex-start; padding:20px 22px; }
+  .card.wdg.datew .win { flex-direction:column; align-items:center;
+     justify-content:center; padding:18px; }
   .card.wdg.weatherw { width:362px; }
   /* one left edge: the weekday, the month and the number all start on it */
-  .wdg .dhead { display:flex; gap:7px; align-items:baseline; line-height:1; }
+  .wdg .dhead { display:flex; gap:7px; align-items:baseline; line-height:1;
+                justify-content:center; }
   .wdg .dnum { font:200 104px -apple-system,"SF Pro Display",sans-serif;
                line-height:0.86; color:rgb(var(--c41)); letter-spacing:-0.055em;
-               margin-top:10px; }
+               margin-top:10px; text-align:center;
+               /* the tracking pulls the glyphs left; nudge it back so the
+                  number sits optically centred rather than measurably so */
+               padding-left:0.055em; }
   .wdg .dday { font:700 23px -apple-system,sans-serif; color:rgb(var(--c22));
                letter-spacing:-0.01em; }
   .wdg .dmon { font:700 23px -apple-system,sans-serif; color:rgba(var(--c39),0.62);
@@ -2188,14 +2192,18 @@ const THEME_BASE = {
   "--c42": [236,255,250],
 };
 const NOV_NAME = "NOVROS";
-const NOV_MENU = [
-  { title: "Apps",      ang: -Math.PI / 2,    menu: "apps" },
-  { title: "Projects",  ang: 0,               menu: "projects" },
-  { title: "Settings",  ang: Math.PI / 4,     menu: "settings" },
-  { title: "Games",     ang: Math.PI / 2,     menu: "games" },
-  { title: "Demos",     ang: 3 * Math.PI / 4, menu: "demos" },
-  { title: "Documents", ang: Math.PI,         menu: "documents" },
-];
+// Six stations, EVENLY spaced: one full turn divided by six is 60
+// degrees apart, starting straight up. The hand-written angles this
+// replaces left 90-degree gaps either side of Apps and 45 everywhere
+// else, so the ring read as lopsided.
+const NOV_ORDER = ["apps", "projects", "settings", "games", "demos", "documents"];
+const NOV_TITLES = { apps: "Apps", projects: "Projects", settings: "Settings",
+                     games: "Games", demos: "Demos", documents: "Documents" };
+const NOV_MENU = NOV_ORDER.map((menu, i) => ({
+  title: NOV_TITLES[menu],
+  ang: -Math.PI / 2 + i * (Math.PI * 2 / NOV_ORDER.length),
+  menu,
+}));
 
 // What each station is wired to. Documents and Demos ride the folders
 // barehands.json already configures; the rest are stations waiting for
