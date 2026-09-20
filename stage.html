@@ -116,7 +116,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   #bgfx { display:none; z-index:0; }
   body.bgon #bgfx { display:block; }
   body.bgon #cam { opacity:0; }   /* still decoding, just not shown */
-  .bgsw { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px; }
+  .bgsw { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px;
+          max-height:268px; overflow-y:auto; padding-right:4px; }
+  .bgsw::-webkit-scrollbar { width:7px; }
+  .bgsw::-webkit-scrollbar-thumb { background:rgba(var(--c33),0.35); border-radius:4px; }
   .bgsw div { position:relative; height:52px; border-radius:9px; cursor:pointer;
               overflow:hidden; background-size:cover; background-position:center;
               border:2px solid rgba(var(--c33),0.22); transition:all .15s ease;
@@ -2157,7 +2160,7 @@ function bgImages() {
     (t.dirs || []).forEach(walk);
   };
   if (PROPSTREE) walk(PROPSTREE);
-  return out.slice(0, 12);
+  return out.sort((a, b) => a.localeCompare(b)).slice(0, 300);
 }
 
 const UIPREF = { modeBar: true };
@@ -2664,6 +2667,8 @@ function browserRows(b) {
   const out = [];
   const walk = (d, path, depth, isProps) => {
     d.dirs.forEach(sub => {
+      // the backgrounds folder is a backdrop library, not staging props
+      if (isProps && sub.name === "backgrounds") return;
       const key = path + "/" + sub.name;
       const open = b.expanded.has(key);
       out.push({ d: depth, t: sub.name, k: "dir", o: open ? 1 : 0, key });
@@ -4979,6 +4984,10 @@ addEventListener("wheel", e => {
   if (!INPUT.mouse) return;
   const c = hitTest({ x: e.clientX, y: e.clientY });
   if (!c) return;
+  // A natively scrollable box under the pointer wins the wheel: the
+  // background grid must scroll itself rather than move the panel body.
+  const box = e.target.closest && e.target.closest(".bgsw");
+  if (box && box.scrollHeight > box.clientHeight + 2) return;
   e.preventDefault();
   // Scroll it if it HAS anything to scroll -- a note, a folder pane --
   // and otherwise resize it. A hologram or an image has no scroll, and
