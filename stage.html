@@ -279,6 +279,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
           border:1px solid rgba(var(--c33),0.28); backdrop-filter:blur(6px);
           -webkit-backdrop-filter:blur(6px); opacity:0.62;
           transition:opacity .14s ease, background .14s ease, color .14s ease; }
+  /* A 26px target is fine for a mouse and small for a tracked hand, so
+     the button hit-tests over a wider area than it draws. The halo is
+     part of the button, so elementFromPoint still answers with it. */
+  .xbtn::before { content:""; position:absolute; inset:-15px; border-radius:50%; }
   .card:hover > .xbtn, .panel:hover > .xbtn { opacity:1; }
   .xbtn:hover { background:rgba(255,105,97,0.9); color:#fff;
                 border-color:rgba(255,150,140,0.95); }
@@ -734,6 +738,9 @@ const TUNE = {
   // reliable measurement in the whole tracker.
   pressBend:     false,  // the finger-bend press. OFF: it latched on
                          // tracker jitter and would not let go
+  dragStart:     0.34,   // xSPAN the pointer must travel with the button
+                         // held before it counts as a drag rather than
+                         // a click. Below this you are aiming, not moving.
   pressFrac:     0.58,   // press when the gap closes to this much of how
                          // open YOUR hand rests -- measured, not guessed
   pressOut:      0.80,   // and release when it opens back past this
@@ -848,18 +855,40 @@ function pointDouble(cur) {
   if (c.type === "img" || c.type === "model" || c.type === "wdg" ||
       c.type === "panel" || c.type === "browser") return killItem(c);
 }
-function pointClick(cur) {
-  const t = performance.now();
-  if (cur.ptPending && t - (cur.ptClickT || 0) < TUNE.doubleMs) {
-    clearTimeout(cur.ptPending); cur.ptPending = null; cur.ptClickT = 0;
-    pointDouble(cur);
-    foley && foley.grab && foley.grab();
+// Activation happens WHERE YOU PRESSED and the instant you let go.
+// Both matter. It used to wait 420ms to see whether a second click was
+// coming, then read the cursor's position at the END of that wait -- so
+// a hand that drifted a few pixels while waiting activated something
+// else, or nothing. And a small target like a close button is exactly
+// where that drift costs you the click.
+function pointActivate(x, y, cur) {
+  const at = { x: x ?? cur.x, y: y ?? cur.y };
+  const el = document.elementFromPoint(at.x, at.y);
+  const b = el && el.closest && el.closest(".xbtn");
+  if (b) {
+    const it = items.find(i => i.el === b.parentElement);
+    if (it) { killItem(it); foley && foley.grab && foley.grab(); }
     return;
   }
-  cur.ptClickT = t;
-  cur.ptPending = setTimeout(() => { cur.ptPending = null; pointSingle(cur); },
-                             TUNE.doubleMs);
+  const c = hitTest(at);
+  if (!c) return;
+  foley && foley.grab && foley.grab();
+  if (c.type === "widget" && c.def.w === "ring") {
+    const sc = RINGS.get(c.id);
+    if (sc) sc.tapT = Date.now() / 1000;
+    return ringToggle(c);
+  }
+  if (c.type === "orb")     return orbActivate(c);
+  if (c.type === "browser") return browserTap(c, at);
+  if (c.type === "card" && c.def.file) return openPanel(c);
+  if (c.type === "img" || c.type === "model") return killItem(c);
+  if (c.type === "panel") {                   // notes close at the bar
+    const barEl = c.el.querySelector(".bar");
+    const r = barEl && barEl.getBoundingClientRect();
+    if (r && at.y >= r.top && at.y <= r.bottom) killItem(c);
+  }
 }
+function pointClick(cur) { pointActivate(cur.x, cur.y, cur); }
 
 // One shared tap test, replacing four divergent copies (300ms/26px and
 // 350ms/24px) that had drifted apart across versions.
@@ -4664,13 +4693,19 @@ async function boot() {
           const bendIn = TUNE.pressBend && (cur.ptBent
             ? f8v < recBar : (f8v < dipBar || f8v < TUNE.pointDip));
           const bent = thumbIn || bendIn;
-          if (bent && !cur.ptBent) { cur.ptBent = true; cur.ptDipT = now; }
-          else if (!bent && cur.ptBent) {
+          // A MOUSE DOES NOT TIME YOUR CLICKS. Hold the button as long
+          // as you like: if the pointer never travelled, it is a click.
+          // The old rule gave you 420ms to press and release or it
+          // counted as a drag, which is why a deliberate pinch over the
+          // X dragged the window instead of closing it.
+          if (bent && !cur.ptBent) {                   // button DOWN
+            cur.ptBent = true; cur.ptDipT = now;
+            cur.downX = cur.x; cur.downY = cur.y;      // where you aimed
+            cur.dragged = false;
+            cur.dwT = 0; cur.dwCool = now + 400;
+          } else if (!bent && cur.ptBent) {            // button UP
             cur.ptBent = false;
-            if (now - (cur.ptDipT || 0) < TUNE.pointTapMs) {
-              cur.dwT = 0; cur.dwCool = now + 400;   // a press beats a dwell
-              pointClick(cur);
-            }
+            if (!cur.dragged) pointActivate(cur.downX, cur.downY, cur);
           }
 
           // HOVER TO CLICK -- the fallback that always works. Rest the
@@ -4719,9 +4754,11 @@ async function boot() {
           // This is how you move an open window: press on it anywhere
           // and go. No need to find the title bar, and no pinch, which
           // is the part that does not survive an off-axis camera.
-          if (cur.ptBent && !cur.ptDrag &&
-              now - (cur.ptDipT || 0) > TUNE.pointTapMs) {
-            const tgt = hitTest(cur);
+          if (cur.ptBent && !cur.ptDrag && !cur.dragged &&
+              Math.hypot(cur.x - (cur.downX ?? cur.x),
+                         cur.y - (cur.downY ?? cur.y)) > spanU(TUNE.dragStart)) {
+            cur.dragged = true;
+            const tgt = hitTest({ x: cur.downX, y: cur.downY });
             if (tgt && tgt.grabbedBy.length === 0) {
               beginGrab(tgt, i, cur);
               // Force MOVE even on a note body, which would otherwise
