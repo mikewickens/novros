@@ -218,6 +218,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
             background:rgba(111,229,214,0.12); pointer-events:none; z-index:999; }
   .cursor.pinched { background:rgba(111,229,214,0.85); transform:scale(0.62);
                     box-shadow:0 0 18px rgba(111,229,214,0.8); }
+  /* NOVROS POINTER: index-finger pointing turns the ring into a real
+     OS arrow, anchored at its tip so the point sits on your fingertip. */
+  .cursor .arrow { position:absolute; left:-2px; top:-2px; width:23px; height:31px;
+                   display:none; background:rgba(150,255,236,0.97);
+                   clip-path:polygon(0 0, 0 76%, 25% 58%, 43% 97%, 62% 89%, 45% 52%, 77% 49%);
+                   filter:drop-shadow(0 2px 5px rgba(0,0,0,0.75)); }
+  .cursor.pointing { background:none; border:none; box-shadow:none; transform:none; }
+  .cursor.pointing .arrow { display:block; }
+  .cursor.pointing .dwell { display:none; }
+  .cursor.clicking .arrow { background:#ffffff; transform:scale(0.86); }
   .cursor .dwell { position:absolute; inset:-7px; border-radius:50%;
                    background:conic-gradient(#8ff0e4 calc(var(--p)*360deg), transparent 0);
                    -webkit-mask:radial-gradient(circle, transparent 58%, black 60%);
@@ -285,7 +295,7 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · R respawn / C camera / D debug</div>
+<div id="hint">POINT (index out, others folded) = arrow cursor · tap your finger = open a folder · double-tap = open a file / close it · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll, shift+wheel or corner-drag = resize · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
 
@@ -330,6 +340,140 @@ if (MODE === "key") {
   document.body.classList.add("keybg");
   document.body.style.background = color;
   if (want === "green") document.body.classList.add("ui-cyan");
+}
+
+// ============================================================
+// NOVROS CONTROL LAYER  (added 2026-09-20)
+// ------------------------------------------------------------
+// Every interaction gate below used to be a RAW SCREEN PIXEL number,
+// fitted on a single 1920x1080 window with a front-facing camera.
+// Two consequences, both reported from the field:
+//   1. On a bigger/denser display the same physical hand motion covers
+//      more pixels, so taps exceed their travel budget and become drags,
+//      and ordinary moves exceed the fling bar and fly off screen.
+//   2. With the camera OFF TO THE SIDE the hand sits in the "profile"
+//      regime, where the pinch gate is at its loosest -- so the cursor
+//      grabs things in passing, and the wide release band makes the
+//      bogus grab stick.
+// These gates are now expressed as multiples of SPAN: the hand's own
+// wrist-to-middle-knuckle length, measured in screen pixels. That is
+// the same "measure the hand against itself" philosophy the claw and
+// pinch shape-gates already use, extended to the distance gates, so it
+// holds at any display size and any camera distance.
+//
+// Live-tunable from the console -- window.TUNE.<key> = n -- effective
+// on the very next frame. No reload, no restart.
+// ============================================================
+const TUNE = {
+  // --- tap: open / close ---
+  tapMs:         340,    // max grip duration that still counts as a tap
+  tapTravel:     0.34,   // xSPAN  cursor drift allowed inside a tap
+  // --- grab ---
+  hitPad:        0.10,   // xSPAN  hit-target inflation around every item
+  // --- pinch ---
+  releaseBar:    0.46,   // pinch ratio at which a slow hand lets go (was 0.55)
+  releaseFast:   0.62,   // ... at which a fast hand lets go        (was 0.70)
+  fastHandSpan:  6.7,    // SPAN/s  what counts as a "fast" hand    (was 800px/s)
+  profileTRel:   1.05,   // profile-lane thumb-off-knuckle floor    (was 0.95)
+  // --- rotate ---
+  autoRotate:    false,  // hold-still-to-3D-rotate auto-latch. DEFAULT OFF:
+                         // it was firing uninvited on whatever a stray pinch
+                         // happened to be holding. Set true to restore.
+  rotateStill:   0.38,   // xSPAN  stillness that keeps the latch armed
+  // --- scroll -> move promotion ---
+  scrollStill:   0.68,   // xSPAN  stillness that keeps that timer armed
+  // --- throw ---
+  flingSpan:    11.0,    // SPAN/s  fling speed bar (was a flat 1300 px/s)
+  // --- pointing (index-finger pointer + tap-to-click) ---
+  pointContrast: 0.18,   // index arch MINUS back-three arch: the exact
+                         // mirror of the pinch's CONTRAST LAW, so the two
+                         // poses can never be confused with each other
+  pointArch:     1.30,   // index must genuinely reach out past its knuckle
+  pointDip:      1.12,   // bend it below this and back = one click
+  pointGraceMs:  520,    // pointer stays engaged through a click's dip
+  pointTapMs:    420,    // max duration of the bend that counts as a click
+  doubleMs:      420,    // two clicks inside this = a double click
+  // --- cursor smoothing (One Euro) ---
+  euroMinCutoff: 1.2,    // lower  = smoother while the hand is still
+  euroBeta:      0.030,  // higher = more responsive while it moves
+  euroDCutoff:   1.0,
+};
+if (typeof window !== "undefined") window.TUNE = TUNE;
+
+// The live hand span in screen px, smoothed. Seeded with a sane value so
+// the gates behave before the first hand is ever seen.
+let SPAN_PX = 120;
+const spanU = m => m * SPAN_PX;     // span-relative -> screen pixels
+
+// ---- ONE EURO FILTER -------------------------------------------------
+// Replaces the old fixed `cur.x += (px - cur.x) * 0.45` EMA, which was
+// simultaneously too laggy for a snap-tap and too jittery to hold still,
+// and whose real strength drifted with framerate (it ran once per CAMERA
+// frame, so at 15fps it barely smoothed at all). One Euro adapts: heavy
+// smoothing when the hand is nearly still -- which is exactly when a
+// tap's travel budget needs protecting -- and light smoothing when it
+// moves, so drags stay responsive. Standard Casiez/Roussel/Vogel filter.
+function makeEuro() {
+  let xPrev = null, dxPrev = 0, tPrev = 0;
+  const alpha = (cutoff, dt) => {
+    const tau = 1 / (2 * Math.PI * cutoff);
+    return 1 / (1 + tau / dt);
+  };
+  return function (x, t) {
+    if (xPrev === null) { xPrev = x; tPrev = t; return x; }
+    let dt = (t - tPrev) / 1000;
+    if (!(dt > 0) || dt > 0.25) dt = 1 / 60;
+    tPrev = t;
+    const dx = (x - xPrev) / dt;
+    dxPrev = dxPrev + alpha(TUNE.euroDCutoff, dt) * (dx - dxPrev);
+    const cutoff = TUNE.euroMinCutoff + TUNE.euroBeta * Math.abs(dxPrev);
+    xPrev = xPrev + alpha(cutoff, dt) * (x - xPrev);
+    return xPrev;
+  };
+}
+
+// ---- THE POINTER'S CLICK -------------------------------------------
+// OS semantics, as asked for: ONE tap opens a folder (the ring's bloom,
+// an orb's pane, a row inside a pane); TWO taps open a file, or close
+// whatever is already open. Pointing never grabs, so tracking across the
+// board can no longer drag or rotate things in passing.
+function pointSingle(cur) {
+  const c = hitTest(cur);
+  if (!c) return;
+  if (c.type === "widget" && c.def.w === "ring") {
+    const sc = RINGS.get(c.id);
+    if (sc) sc.tapT = Date.now() / 1000;
+    return ringToggle(c);
+  }
+  if (c.type === "orb")     return openBrowser(c.def.orb, c.x, c.y);
+  if (c.type === "browser") return browserTap(c, cur);
+}
+function pointDouble(cur) {
+  const c = hitTest(cur);
+  if (!c) return;
+  if (c.type === "card" && c.def.file)            return openPanel(c);
+  if (c.type === "img" || c.type === "model" ||
+      c.type === "panel" || c.type === "browser") return killItem(c);
+}
+function pointClick(cur) {
+  const t = performance.now();
+  if (cur.ptPending && t - (cur.ptClickT || 0) < TUNE.doubleMs) {
+    clearTimeout(cur.ptPending); cur.ptPending = null; cur.ptClickT = 0;
+    pointDouble(cur);
+    foley && foley.grab && foley.grab();
+    return;
+  }
+  cur.ptClickT = t;
+  cur.ptPending = setTimeout(() => { cur.ptPending = null; pointSingle(cur); },
+                             TUNE.doubleMs);
+}
+
+// One shared tap test, replacing four divergent copies (300ms/26px and
+// 350ms/24px) that had drifted apart across versions.
+function isTap(cur, c) {
+  const ms = performance.now() - (cur.grabT || 0);
+  const trav = Math.hypot(cur.x - (c.tapX ?? cur.x), cur.y - (c.tapY ?? cur.y));
+  return ms < TUNE.tapMs && trav < spanU(TUNE.tapTravel);
 }
 
 const cam = document.getElementById("cam");
@@ -1656,10 +1800,11 @@ function getCursor(i) {
   if (!cursors[i]) {
     const el = document.createElement("div");
     el.className = "cursor";
-    el.innerHTML = `<div class="dwell" style="--p:0"></div>`;
+    el.innerHTML = `<div class="dwell" style="--p:0"></div><div class="arrow"></div>`;
     document.body.appendChild(el);
     cursors[i] = { el, ring: el.querySelector(".dwell"), x: innerWidth / 2,
                    y: innerHeight / 2, pinched: false, history: [],
+                   fx: makeEuro(), fy: makeEuro(), spanPx: SPAN_PX,
                    palmOpen: false, softOpen: false, lastOpenT: 0,
                    lastSoftT: 0, wipe: null,
                    pinchT: 0, ghost: false };
@@ -1678,8 +1823,11 @@ function dropCursor(i) {
 function hitTest(cur) {
   for (let i = items.length - 1; i >= 0; i--) {
     const c = items[i], r = c.el.getBoundingClientRect();
-    if (cur.x > r.left - 24 && cur.x < r.right + 24 &&
-        cur.y > r.top - 24 && cur.y < r.bottom + 24) return c;
+    const pad = spanU(TUNE.hitPad);   // was a flat 24px: a fixed pad is a
+    // much bigger magnet on a small screen than a large one, and it is
+    // what made the cursor grab things it merely passed near.
+    if (cur.x > r.left - pad && cur.x < r.right + pad &&
+        cur.y > r.top - pad && cur.y < r.bottom + pad) return c;
   }
   return null;
 }
@@ -1776,19 +1924,13 @@ function endGrab(c, i, cur) {
     // shelf v3: a quick, near-still release on a browser row = the TAP
     // (folders unfold, notes open, props stage, widgets summon)
     if (c.type === "browser" && c.mode === "scroll") {
-      const bMs = performance.now() - (cur.grabT || 0);
-      const bTrav = Math.hypot(cur.x - (c.tapX || cur.x),
-                               cur.y - (c.tapY || cur.y));
-      if (bMs < 350 && bTrav < 24) browserTap(c, cur);
+      if (isTap(cur, c)) browserTap(c, cur);
     }
     // v3.3/v3.8: a quick tap on the GRIP BAR closes — notes and
     // folder panes alike
     if ((c.type === "browser" || c.type === "panel") && c.barGrab &&
         !cur.probKill) {
-      const gMs = performance.now() - (cur.grabT || 0);
-      const gTrav = Math.hypot(cur.x - (c.tapX || cur.x),
-                               cur.y - (c.tapY || cur.y));
-      if (gMs < 350 && gTrav < 24) killItem(c);
+      if (isTap(cur, c)) killItem(c);
       c.barGrab = false;
     }
     // GESTURE v3 (2026-08-14, Jared's spec — "make it a single pinch"):
@@ -1798,10 +1940,7 @@ function endGrab(c, i, cur) {
     const pullFresh = performance.now() - (c.pullT || 0) < 800 ||
                       cur.probKill;
     if (c.type === "card" && c.def.file && !pullFresh) {
-      const tMs = performance.now() - (cur.grabT || 0);
-      const tTrav = Math.hypot(cur.x - (c.tapX || cur.x),
-                               cur.y - (c.tapY || cur.y));
-      if (tMs < 300 && tTrav < 26) openPanel(c);
+      if (isTap(cur, c)) openPanel(c);
     }
     // GESTURE v3.1 (2026-08-14, the crush is DEAD — "that is happening
     // too naturally"): THE TAP IS SYMMETRIC — tap opens closed things,
@@ -1812,19 +1951,13 @@ function endGrab(c, i, cur) {
     // tap can't kill a note mid-read; images/models keep tap-anywhere
     if ((c.type === "img" || c.type === "model")
         && !pullFresh && !c.flying) {
-      const xMs = performance.now() - (cur.grabT || 0);
-      const xTrav = Math.hypot(cur.x - (c.tapX || cur.x),
-                               cur.y - (c.tapY || cur.y));
-      if (xMs < 300 && xTrav < 26) killItem(c);
+      if (isTap(cur, c)) killItem(c);
     }
     // PHASE 2 quick-tap releases: the RING toggles its orbital bloom;
     // an ORB grows into its browser pane (same discrimination gate as
     // the browser-row tap: short grip, near-zero travel)
     {
-      const qMs = performance.now() - (cur.grabT || 0);
-      const qTr = Math.hypot(cur.x - (c.tapX ?? cur.x),
-                             cur.y - (c.tapY ?? cur.y));
-      if (qMs < 350 && qTr < 24) {
+      if (isTap(cur, c)) {
         if (c.type === "widget" && c.def.w === "ring" &&
             c.mode === "move") {
           const sc = RINGS.get(c.id);
@@ -1875,7 +2008,7 @@ function endGrab(c, i, cur) {
       // a drag's echoes have decayed by then. Speed bar at 1500,
       // thrown anywhere he likes — including hand to hand.
       {
-        if (pk > 1300 && lastS > pk * 0.4) {   // v3.9.25: throw bar eased
+        if (pk > spanU(TUNE.flingSpan) && lastS > pk * 0.4) {   // v3.9.25: throw bar eased
           // v16: on a note in SCROLL mode only a clearly HORIZONTAL fling
           // closes (vertical fast releases are just energetic scrolling);
           // in promoted MOVE mode (and on cards) any fling tosses it.
@@ -2099,10 +2232,20 @@ async function boot() {
         const _w = toScreen(lms[0]), _m = toScreen(lms[9]);
         cur.wristX = _w.x; cur.wristY = _w.y;   // v3.9.7: the prayer read
         cur.mcpX = _m.x; cur.mcpY = _m.y;
+        // THE SPAN, in screen pixels: the hand's own yardstick projected
+        // onto the display. Every distance gate is a multiple of this, so
+        // it tracks both screen size and how far away the hand is.
+        const spx = Math.hypot(_w.x - _m.x, _w.y - _m.y);
+        if (spx > 8) { cur.spanPx = spx; SPAN_PX += (spx - SPAN_PX) * 0.1; }
         const gap = Math.hypot(lms[4].x - lms[8].x, lms[4].y - lms[8].y);
         const ratio = span > 0 ? gap / span : 1;
         const px = (tip.x + thumb.x) / 2, py = (tip.y + thumb.y) / 2;
-        cur.x += (px - cur.x) * 0.45; cur.y += (py - cur.y) * 0.45;
+        // While POINTING the cursor rides the index fingertip (an arrow
+        // should sit on your finger, not on a thumb/index midpoint).
+        // Uses last frame's pointer state -- one frame of lag, invisible.
+        const _cx = cur.ptActive ? tip.x : px;
+        const _cy = cur.ptActive ? tip.y : py;
+        cur.x = cur.fx(_cx, now); cur.y = cur.fy(_cy, now);
         cur.history.push({ x: cur.x, y: cur.y, t: now });
         if (cur.history.length > 10) cur.history.shift();   // v3.6: peak-fling window
 
@@ -2163,7 +2306,7 @@ async function boot() {
         // Every correct sample passes at least one; every impostor
         // sampled passes neither.
         const okBack = (backMean - f8v > 0.18 && backMean > 1.30) ||
-                       (aspect < 2.0 && tRel > 0.95);
+                       (aspect < 2.0 && tRel > TUNE.profileTRel);
         // v3.8.3 (his tap report: drag fixed, tap still flaky) — the
         // EMA charged too slow for a snap-tap (~6 frames): rate up to
         // 0.30 = three clean consecutive frames (~100ms) to trust,
@@ -2194,11 +2337,12 @@ async function boot() {
         // v3.9.25 (still too sticky): the fast-release bar eased
         // 0.85→0.70 — blur under-reads a throwing hand's open, and the
         // 2-frame sustain already guards the phantom spikes
-        const relBar = hspd > 800 ? 0.70 : 0.55;
+        const fastHand = hspd > spanU(TUNE.fastHandSpan);
+        const relBar = fastHand ? TUNE.releaseFast : TUNE.releaseBar;
         // v3.9.9: at speed, a release must be SEEN OPEN two frames
         // running — a single blur spike can't fake a throw
         const openRead = ratio >= relBar;
-        const relOk = hspd > 800 ? (openRead && cur.openPrev) : openRead;
+        const relOk = fastHand ? (openRead && cur.openPrev) : openRead;
         cur.openPrev = openRead;
         // v3.9.12 (his second left-hand reading topped 0.28 — riding
         // whatever ceiling gets set): the gap number is so angle-
@@ -2228,12 +2372,38 @@ async function boot() {
         // (v3.9.31: the visibility clause is GONE — the hand model
         // carries the field but never populates it, so it read 0 on
         // every frame and declared every real hand a hallucination)
+        // ---- THE POINTER (NOVROS) --------------------------------
+        // The mirror image of the pinch's contrast law: a pinch curls the
+        // INDEX in while the back three arch out; a point throws the
+        // index OUT while the back three fold in. Same two metrics, same
+        // corpus, opposite sign -- so the two poses are mutually
+        // exclusive by construction and cannot fight each other.
+        const ptSig = (f8v - backMean) > TUNE.pointContrast &&
+                      f8v > TUNE.pointArch && aspect <= 6;
+        if (ptSig) cur.ptGood = now;
+        cur.ptActive = (now - (cur.ptGood || 0)) < TUNE.pointGraceMs;
+        if (cur.ptActive) {
+          // THE TAP: bend the index and straighten it. The grace window
+          // above keeps the pointer engaged through the bend, so the
+          // cursor does not jump away mid-click.
+          const bent = f8v < TUNE.pointDip;
+          if (bent && !cur.ptBent) { cur.ptBent = true; cur.ptDipT = now; }
+          else if (!bent && cur.ptBent) {
+            cur.ptBent = false;
+            if (now - (cur.ptDipT || 0) < TUNE.pointTapMs) pointClick(cur);
+          }
+        } else { cur.ptBent = false; }
+        cur.el.classList.toggle("pointing", !!cur.ptActive);
+        cur.el.classList.toggle("clicking", !!cur.ptBent);
+
         const handGarbage = aspect > 6;
         if (handGarbage) cur.probKill = true;   // garbage drops mute taps
         // v3.9.32 (his final pinch sample: perfect signature, gap
         // 0.22-0.30 vs the 0.22 frontal ceiling): frontal eased to
         // 0.32 — the contrast law carries the touch duty.
-        cur.pinched = handGarbage ? false
+        // A pointing hand never grabs: that is the whole reason the
+        // cursor stopped dragging things it merely travelled past.
+        cur.pinched = (handGarbage || cur.ptActive) ? false
                     : wasPinched ? !relOk
                                  : ratio < (aspect < 2.0 ? 0.38 : 0.32) &&
                                    (okNow || cur.okEma > 0.55 || holdingI);
@@ -2687,7 +2857,7 @@ async function boot() {
               held.scroll0 - (cur.y - held.grabY0) * 1.4));
             held.body.style.transform = `translateY(${-held.scrollY}px)`;
             const drift = Math.hypot(cur.x - held.holdX, cur.y - held.holdY);
-            if (drift > 80) {
+            if (drift > spanU(TUNE.scrollStill)) {
               // drifted out of the hold zone: re-anchor, restart the timer
               held.holdX = cur.x; held.holdY = cur.y;
               held.holdT = performance.now(); held.hch = 0;
@@ -2730,11 +2900,18 @@ async function boot() {
             // v3: latch demands genuine stillness (80→45px) so a
             // mid-drag hesitation can't trip 3D mode uninvited
             const mdrift = Math.hypot(cur.x - held.holdX, cur.y - held.holdY);
-            if (mdrift > 45) {
+            if (mdrift > spanU(TUNE.rotateStill)) {
               held.holdX = cur.x; held.holdY = cur.y;
               held.holdT = performance.now(); held.hch = 0;
             } else {
-              const mp = Math.min((performance.now() - held.holdT) / 1000, 1);
+              // NOVROS: this auto-latch used to fire on ANY item a pinch
+              // was holding after ~1s of stillness -- including one the
+              // cursor had grabbed by accident on its way past. That is
+              // how a folder pane ends up rotated nobody asked for it.
+              // Rotation is now an explicit act (right-drag with the
+              // mouse); set window.TUNE.autoRotate = true to restore.
+              const mp = TUNE.autoRotate
+                ? Math.min((performance.now() - held.holdT) / 1000, 1) : 0;
               held.hch = mp;
               if (mp >= 1) {               // LATCHED: 3D rotate
                 held.mode = "rotate";
@@ -2755,7 +2932,9 @@ async function boot() {
             `\npalm ${cur.palmOpen ? "OPEN" : "-"}${cur.fpSplay ? " CLAW" : ""} pull ph${cur.fp ? cur.fp.ph : 0}` +
             `\n${cur.fpDbg || ""}` + (SAMPLED ? `\n${SAMPLED}` : "");
       });
-      Object.keys(cursors).map(Number).forEach(i => { if (!seen.has(i)) dropCursor(i); });
+      Object.keys(cursors).map(Number).forEach(i => {
+        if (i !== MOUSE_ID && !seen.has(i)) dropCursor(i);
+      });
 
       // ---- GESTURE v3.9: THE DELIBERATE CLAP (Jared, after false
       // resets kept wiping his pinch tests: "that reset needs to be
@@ -2984,7 +3163,7 @@ async function renderLoop() {
       if (!rc) {
         const el = document.createElement("div");
         el.className = "cursor";
-        el.innerHTML = `<div class="dwell" style="--p:0"></div>`;
+        el.innerHTML = `<div class="dwell" style="--p:0"></div><div class="arrow"></div>`;
         document.body.appendChild(el);
         rc = rCursors[i] = { el, ring: el.querySelector(".dwell"),
                              x: rx(c.x) * innerWidth, y: c.y * innerHeight };
@@ -3133,6 +3312,167 @@ async function renderLoop() {
   } catch (e) {}
   requestAnimationFrame(renderLoop);
 }
+
+
+// ============================================================
+// NOVROS MOUSE LAYER  (added 2026-09-20)
+// ------------------------------------------------------------
+// Hands are the point, but a board you cannot also drive with a mouse is
+// a demo, not an operating system -- and when the camera is off to one
+// side the hands need a fallback that always works. The mouse drives the
+// SAME items through the SAME beginGrab/endGrab machinery as a hand, by
+// owning one extra cursor slot, so nothing here is a parallel code path.
+//
+//   left click              tap: open a card, close a note/image/model,
+//                           bloom the ring, unfold an orb, open a row
+//   left drag               move the item
+//   right drag              rotate it in 3D  (yaw = x, pitch = y)
+//   middle / wheel          scroll an open note or folder pane
+//   shift + wheel           resize the item under the pointer
+//   drag the bottom-right   resize the item
+//   double right click      reset an item's rotation to flat
+// ============================================================
+const MOUSE_ID = 99;
+const GRIP = 26;                 // px: corner zone that means "resize"
+let mDrag = null;                // the active mouse interaction
+
+function mouseCursor(x, y) {
+  const cur = getCursor(MOUSE_ID);
+  cur.el.style.display = "none";  // the OS pointer is the visible cursor
+  cur.x = x; cur.y = y;
+  return cur;
+}
+// A corner grip, in the item's own screen rect.
+function inGrip(c, x, y) {
+  const r = c.el.getBoundingClientRect();
+  return x > r.right - GRIP && x < r.right + 8 &&
+         y > r.bottom - GRIP && y < r.bottom + 8;
+}
+function scrollBy(c, dy) {
+  if (!c.body || !c.body.parentElement) return false;
+  const box = c.body.parentElement.clientHeight;
+  const maxS = Math.max(0, c.body.offsetHeight - box + 40);
+  if (maxS <= 0) return false;
+  c.scrollY = Math.min(maxS, Math.max(0, (c.scrollY || 0) + dy));
+  c.body.style.transform = `translateY(${-c.scrollY}px)`;
+  return true;
+}
+// The click outcome, mirroring what a hand TAP does to each item type.
+function mouseTap(c, cur) {
+  if (c.type === "browser") return browserTap(c, cur);
+  if (c.type === "orb")     return openBrowser(c.def.orb, c.x, c.y);
+  if (c.type === "widget" && c.def.w === "ring") {
+    const sc = RINGS.get(c.id);
+    if (sc) sc.tapT = Date.now() / 1000;
+    return ringToggle(c);
+  }
+  if (c.type === "card" && c.def.file) return openPanel(c);
+  if (c.type === "img" || c.type === "model") return killItem(c);
+  if (c.type === "panel") {                       // notes close at the bar
+    const barEl = c.el.querySelector(".bar");
+    const r = barEl && barEl.getBoundingClientRect();
+    if (r && cur.y >= r.top && cur.y <= r.bottom) killItem(c);
+  }
+}
+
+addEventListener("contextmenu", e => { if (mDrag || hitTest({ x: e.clientX, y: e.clientY })) e.preventDefault(); });
+
+addEventListener("mousedown", e => {
+  const x = e.clientX, y = e.clientY;
+  const c = hitTest({ x, y });
+  if (!c) return;
+  e.preventDefault();
+  const cur = mouseCursor(x, y);
+  cur.grabT = performance.now();
+
+  if (e.button === 2) {                                   // RIGHT = rotate
+    mDrag = { c, cur, kind: "rotate", x0: x, y0: y,
+              r0x: c.rx || 0, r0y: c.ry || 0, t: performance.now() };
+    c.el.classList.add("grabbed");
+    return;
+  }
+  if (e.button !== 0) return;
+
+  if (inGrip(c, x, y) && c.type !== "orb") {              // CORNER = resize
+    const d0 = Math.hypot(x - c.x, y - c.y) || 1;
+    mDrag = { c, cur, kind: "resize", d0, s0: c.scale || 1 };
+    c.el.classList.add("grabbed");
+    return;
+  }
+  beginGrab(c, MOUSE_ID, cur);            // LEFT = the ordinary grab
+  c.tapX = x; c.tapY = y;
+  mDrag = { c, cur, kind: "grab", x0: x, y0: y, moved: false };
+});
+
+addEventListener("mousemove", e => {
+  const x = e.clientX, y = e.clientY;
+  if (!mDrag) {                            // idle: hint what the corner does
+    const c = hitTest({ x, y });
+    document.body.style.cursor =
+      c && c.type !== "orb" && inGrip(c, x, y) ? "nwse-resize"
+      : c ? "grab" : "";
+    return;
+  }
+  const { c, cur } = mDrag;
+  cur.x = x; cur.y = y;
+
+  if (mDrag.kind === "rotate") {
+    const ROT = 0.012;
+    let ny = mDrag.r0y + (x - mDrag.x0) * ROT;
+    if (c.type !== "model") ny = Math.max(-1.2, Math.min(1.2, ny));
+    c.ry = ny;
+    c.rx = Math.max(-1.2, Math.min(1.2, mDrag.r0x + (y - mDrag.y0) * ROT));
+    return;
+  }
+  if (mDrag.kind === "resize") {
+    const d = Math.hypot(x - c.x, y - c.y);
+    c.scale = Math.min(12, Math.max(0.12, mDrag.s0 * (d / mDrag.d0)));
+    return;
+  }
+  // grab: the first real movement converts a note's scroll-grab into a
+  // move, because with a mouse the WHEEL is what scrolls.
+  if (Math.hypot(x - mDrag.x0, y - mDrag.y0) > 4) {
+    if (!mDrag.moved) {
+      mDrag.moved = true;
+      if (c.mode === "scroll") { c.mode = "move"; c.ox = c.x - x; c.oy = c.y - y; }
+    }
+    if (c.mode === "move") { c.x = x + (c.ox || 0); c.y = y + (c.oy || 0); }
+  }
+});
+
+addEventListener("mouseup", e => {
+  if (!mDrag) return;
+  const { c, cur, kind } = mDrag;
+  const x = e.clientX, y = e.clientY;
+  cur.x = x; cur.y = y;
+  document.body.style.cursor = "";
+
+  if (kind === "rotate") {
+    c.el.classList.remove("grabbed");
+    // a right-click that never travelled flattens the item back out
+    if (Math.hypot(x - mDrag.x0, y - mDrag.y0) < 4 &&
+        performance.now() - mDrag.t < 300) { c.rx = 0; c.ry = 0; c.rvy = 0; }
+  } else if (kind === "resize") {
+    c.el.classList.remove("grabbed");
+  } else {
+    const click = !mDrag.moved;
+    endGrab(c, MOUSE_ID, cur);
+    if (click) mouseTap(c, cur);
+  }
+  mDrag = null;
+});
+
+addEventListener("wheel", e => {
+  const c = hitTest({ x: e.clientX, y: e.clientY });
+  if (!c) return;
+  if (e.shiftKey) {                                  // shift+wheel = resize
+    e.preventDefault();
+    c.scale = Math.min(12, Math.max(0.12,
+      (c.scale || 1) * (e.deltaY > 0 ? 0.92 : 1.08)));
+    return;
+  }
+  if (scrollBy(c, e.deltaY)) e.preventDefault();     // otherwise: scroll it
+}, { passive: false });
 
 if (ROLE === "render") {
   document.body.classList.add("overlay");
