@@ -111,10 +111,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     box-shadow:0 8px 40px rgba(0,0,0,0.55),
       0 0 calc(24px + var(--ch)*70px) rgba(var(--c22),calc(0.10 + var(--ch)*0.75)),
       inset 0 1px 0 rgba(var(--c33),0.35); }
-  #cam, #bgfx { position:absolute; inset:0; width:100%; height:100%;
+  #cam, #bgfx, #bgimg { position:absolute; inset:0; width:100%; height:100%;
                 object-fit:cover; transform:scaleX(-1); }
-  #bgfx { display:none; z-index:0; }
+  #bgfx, #bgimg { display:none; z-index:0; }
   body.bgon #bgfx { display:block; }
+  body.bgdirect #bgfx { display:none; }
+  body.bgdirect #bgimg { display:block; }
   body.bgon #cam { opacity:0; }   /* still decoding, just not shown */
   .bgsw { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px;
           max-height:268px; overflow-y:auto; padding-right:4px; }
@@ -548,6 +550,7 @@ setTimeout(function () {
 </script>
 <video id="cam" autoplay playsinline muted></video>
 <canvas id="bgfx"></canvas>
+<img id="bgimg" alt="" decoding="sync">
 <div id="behind"></div>
 <div id="boot">NOVROS<br><span style="color:rgb(var(--c31));font-size:13px">starting… allow the camera when asked</span></div>
 <!-- the hint bar is gone: the controls are the UI now -->
@@ -2029,12 +2032,13 @@ const BG = {
   // its own colour, independent of the theme: the theme's darkest token
   // was standing in for this, and that token is very nearly black
   colour: "24,68,96", hue: 200, sat: 0.75, lum: 0.42,
+  hideMe: false,         // backdrop only: no camera, and no segmenter at all
   cv: null, ctx: null, bgc: null, bgx: null, pc: null, px: null,
   mc: null, mx: null, img: null, W: 0, H: 0,
 
   save() {
     try { localStorage.setItem("novros-bg", JSON.stringify({
-      m: this.mode, s: this.src, b: this.blur,
+      m: this.mode, s: this.src, b: this.blur, hide: this.hideMe,
       c: this.colour, h: this.hue, t: this.sat, l: this.lum })); } catch {}
   },
   restore() {
@@ -2042,6 +2046,7 @@ const BG = {
       const v = JSON.parse(localStorage.getItem("novros-bg") || "null");
       if (v) {
         this.blur = v.b ?? 14;
+        this.hideMe = !!v.hide;
         this.colour = v.c || this.colour;
         this.hue = v.h ?? this.hue; this.sat = v.t ?? this.sat; this.lum = v.l ?? this.lum;
         if (v.m && v.m !== "none") this.set(v.m, v.s);
@@ -2050,7 +2055,7 @@ const BG = {
   },
 
   async set(mode, src) {
-    if (mode !== "none" && !this.seg) {
+    if (mode !== "none" && !this.hideMe && !this.seg) {
       if (!VISION || this.busy) { toast("background needs the tracker running", 1800); return; }
       this.busy = true; toast("loading the segmenter…", 1800);
       try {
@@ -2066,9 +2071,11 @@ const BG = {
     this.mode = mode; this.src = src || "";
     if (mode === "image" && this.src) {
       this.img = new Image(); this.img.crossOrigin = "anonymous"; this.img.src = this.src;
+      document.getElementById("bgimg").src = this.src;
     }
     this.on = mode !== "none";
     document.body.classList.toggle("bgon", this.on);
+    document.body.classList.toggle("bgdirect", this.on && this.hideMe && mode === "image");
     this.save();
     document.querySelectorAll(".bgsw div").forEach(d =>
       d.classList.toggle("on", d.dataset.m === mode &&
@@ -2086,14 +2093,36 @@ const BG = {
   },
 
   render(now) {
-    if (!this.on || !this.seg || !cam.videoWidth) return;
+    if (!this.on || !cam.videoWidth) return;
+    if (!this.hideMe && !this.seg) return;
     this.init();
-    // working resolution: enough for a background, a quarter of the cost
+    // FULL resolution. The old 960px working size was then stretched by
+    // CSS across a Retina window -- close to four times up -- which is
+    // what made the backdrops look soft and smeared. Nothing here is
+    // per-pixel in JS except the mask, which stays small on purpose, so
+    // the cost of doing this properly is GPU blitting and little else.
     const vw = cam.videoWidth, vh = cam.videoHeight;
-    const W = Math.min(960, vw), H = Math.round(vh * (W / vw));
+    const W = Math.min(3840, Math.max(vw, Math.round(innerWidth * (devicePixelRatio || 1))));
+    const H = Math.round(W * (vh / vw));
     if (W !== this.W || H !== this.H) {
       this.W = W; this.H = H;
       [this.cv, this.bgc, this.pc].forEach(c => { c.width = W; c.height = H; });
+      this.bgx.imageSmoothingQuality = "high";
+      this.ctx.imageSmoothingQuality = "high";
+      this.px.imageSmoothingQuality = "high";
+    }
+    // HIDE ME: backdrop only. It needs no mask, so it takes the short
+    // path out before any segmentation -- which also means this mode
+    // never downloads or runs the segmenter at all.
+    if (this.hideMe) {
+      // In background-only image mode the real <img> is displayed instead.
+      // Avoid a needless image -> canvas -> CSS resampling chain, which made
+      // every backdrop look soft even when its source file was high-res.
+      if (this.mode === "image") return;
+      this.paintBackdrop(W, H);
+      this.ctx.clearRect(0, 0, W, H);
+      this.ctx.drawImage(this.bgc, 0, 0);
+      return;
     }
     let r; try { r = this.seg.segmentForVideo(cam, now); } catch { return; }
     const conf = r && r.confidenceMasks && r.confidenceMasks[0];
@@ -2146,12 +2175,26 @@ const BG = {
     this.mx.putImageData(id, 0, 0);
     if (r.close) r.close();
 
-    // 1. the background
+    this.paintBackdrop(W, H);
+    this.compose(W, H);
+  },
+
+  paintBackdrop(W, H) {
     this.bgx.clearRect(0, 0, W, H);
     if (this.mode === "blur") {
-      this.bgx.filter = `blur(${this.blur}px)`;
-      this.bgx.drawImage(cam, 0, 0, W, H);
-      this.bgx.filter = "none";
+      // blur a SMALL copy and scale it up, rather than blurring millions
+      // of pixels: a heavy blur throws its own detail away, so the two
+      // are indistinguishable and this one is nearly free
+      if (!this.sc) { this.sc = document.createElement("canvas");
+                      this.sx = this.sc.getContext("2d"); }
+      const sw = 480, sh = Math.max(1, Math.round(H * (sw / W)));
+      if (this.sc.width !== sw || this.sc.height !== sh) {
+        this.sc.width = sw; this.sc.height = sh;
+      }
+      this.sx.filter = `blur(${Math.max(1, this.blur * sw / W)}px)`;
+      this.sx.drawImage(cam, 0, 0, sw, sh);
+      this.sx.filter = "none";
+      this.bgx.drawImage(this.sc, 0, 0, W, H);
     } else if (this.mode === "image" && this.img && this.img.complete && this.img.naturalWidth) {
       const ir = this.img.naturalWidth / this.img.naturalHeight, cr = W / H;
       let dw = W, dh = H;
@@ -2161,9 +2204,11 @@ const BG = {
       this.bgx.fillStyle = `rgb(${this.colour})`;
       this.bgx.fillRect(0, 0, W, H);
     }
+  },
 
-    // 2. the person, cut out by the mask (scaled up smoothly, which is
-    //    what gives the edge its softness for free)
+  compose(W, H) {
+    // the person, cut out by the mask (scaled up smoothly, which is
+    // what gives the edge its softness for free)
     this.px.globalCompositeOperation = "source-over";
     this.px.clearRect(0, 0, W, H);
     this.px.drawImage(cam, 0, 0, W, H);
@@ -2179,14 +2224,22 @@ const BG = {
   },
 };
 
-// every image the media folder holds, as background options
+// Only media/backgrounds supplies the background picker. Images elsewhere
+// in media remain props/effects and must never leak into this list.
 function bgImages() {
   const out = [];
-  const walk = t => {
+  const walk = (t, parent = "") => {
     (t.items || []).forEach(f => {
-      if (/\.(png|jpe?g|webp)$/i.test(f)) out.push("/media/" + f);
+      const item = String(f).replace(/\\/g, "/");
+      // Current servers return media-root-relative paths; older running
+      // servers return only the filename inside each tree node. Support both.
+      const path = item.includes("/") ? item : [parent, item].filter(Boolean).join("/");
+      if (/^backgrounds\/[^/]+\.(png|jpe?g|webp)$/i.test(path)) {
+        out.push("/media/" + path);
+      }
     });
-    (t.dirs || []).forEach(walk);
+    (t.dirs || []).forEach(d =>
+      walk(d, [parent, d.name].filter(Boolean).join("/")));
   };
   if (PROPSTREE) walk(PROPSTREE);
   return out.sort((a, b) => a.localeCompare(b)).slice(0, 300);
@@ -2313,6 +2366,13 @@ const CFG_TOGGLES = [
    () => TUNE.autoRotate, v => TUNE.autoRotate = v],
   ["Wink to carry", "in head control, a wink picks up and puts down",
    () => TUNE.winkDrag, v => TUNE.winkDrag = v],
+  ["Hide me", "show only the backdrop, with no camera in it at all",
+   () => BG.hideMe, v => {
+     BG.hideMe = v;
+     document.body.classList.toggle("bgdirect", v && BG.on && BG.mode === "image");
+     if (v && BG.mode === "none") BG.set("colour");   // something to show
+     else { BG.save(); if (!v && BG.mode !== "none") BG.set(BG.mode, BG.src); }
+   }],
 ];
 
 function settingsHTML() {
@@ -2349,6 +2409,7 @@ function settingsHTML() {
         class="${BG.mode === "image" && BG.src === u ? "on" : ""}"
         style="background-image:url('${escT(u)}')"></div>`).join("")}
     </div>
+    ${row(CFG_TOGGLES[5][0], CFG_TOGGLES[5][1], sw(5, CFG_TOGGLES[5][2]()))}
     <div class="row"><div><div class="nm">Blur strength</div>
       <div class="hint">only applies to the blurred background</div></div>
       <div class="sl"><input class="ctl" type="range" id="bgblur" min="4" max="40"
