@@ -55,6 +55,8 @@ import time
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import urllib.request
+import xml.etree.ElementTree as ET
 
 HERE = Path(__file__).resolve().parent
 
@@ -125,6 +127,60 @@ _CMDS = []              # queued board commands (your AI -> tracker)
 _ALLOWED = ("add_img", "add_card", "clear", "reset", "hand", "give",
             "yank", "hover", "scroll_note", "widget", "explode", "assemble",
             "present")
+
+
+# ---------------------------------------------------------------- NEWS
+# RSS is public but sends no CORS headers, so the browser cannot read a
+# feed itself. The server fetches on its behalf and hands back plain
+# JSON. Cached, because a ticker asking four newsrooms for the same
+# headlines every few seconds is rude and slow.
+NEWS_FEEDS = [
+    ("BBC",      "https://feeds.bbci.co.uk/news/rss.xml"),
+    ("BBC World","https://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("Guardian", "https://www.theguardian.com/uk/rss"),
+    ("Sky",      "https://feeds.skynews.com/feeds/rss/home.xml"),
+]
+NEWS_TTL = 300
+_NEWS = {"t": 0, "items": []}
+
+def fetch_news():
+    """Every read fails soft: one dead feed must not empty the ticker."""
+    now = time.time()
+    if _NEWS["items"] and now - _NEWS["t"] < NEWS_TTL:
+        return _NEWS["items"]
+    out = []
+    for name, url in NEWS_FEEDS:
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "NOVROS/1.0 (+local)"})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                root = ET.fromstring(r.read())
+            for item in root.iter("item"):
+                t = item.findtext("title") or ""
+                if not t.strip():
+                    continue
+                out.append({"t": t.strip(), "s": name,
+                            "u": (item.findtext("link") or "").strip()})
+                if len(out) > 120:
+                    break
+        except Exception:
+            continue
+    # interleave the sources so one newsroom cannot own the whole ticker
+    by = {}
+    for it in out:
+        by.setdefault(it["s"], []).append(it)
+    mixed, i = [], 0
+    while any(by.values()):
+        for k in list(by):
+            if by[k]:
+                mixed.append(by[k].pop(0))
+        i += 1
+        if i > 60:
+            break
+    if mixed:
+        _NEWS["items"] = mixed
+        _NEWS["t"] = now
+    return _NEWS["items"]
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -220,6 +276,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self.path == "/news":
+            try:
+                return self._json({"items": fetch_news()})
+            except Exception:
+                return self._json({"items": []})
         if self.path == "/config":
             # the page builds its ring name + orb bloom from this
             self._json({"name": CONFIG.get("name", "Assistant"),

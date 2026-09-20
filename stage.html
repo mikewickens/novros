@@ -342,6 +342,22 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .card.wdg.datew .win { flex-direction:column; align-items:center;
      justify-content:center; padding:18px; }
   .card.wdg.weatherw { width:362px; }
+  .card.wdg.newsw { width:540px; }
+  .card.wdg.newsw .win { padding:15px 0 14px; }
+  .card.wdg.newsw .wlbl { padding:0 20px; }
+  .nwin { overflow:hidden; width:100%; margin-top:11px;
+          -webkit-mask:linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+          mask:linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); }
+  .ntrack { display:flex; white-space:nowrap; width:max-content;
+            animation:nscroll linear infinite; will-change:transform; }
+  .card.wdg.newsw:hover .ntrack { animation-play-state:paused; }
+  .ntrack > span { padding-right:44px; font:500 15px -apple-system,sans-serif;
+                   color:rgba(var(--c41),0.95); }
+  .ntrack b { font:700 10px "SF Mono",Menlo,monospace; letter-spacing:0.12em;
+              color:rgb(var(--c22)); text-transform:uppercase; margin-right:8px; }
+  .ntrack i { color:rgba(var(--c39),0.4); font-style:normal; margin:0 16px; }
+  @keyframes nscroll { from { transform:translateX(0); }
+                       to   { transform:translateX(-50%); } }
   /* one left edge: the weekday, the month and the number all start on it */
   .wdg .dhead { display:flex; gap:7px; align-items:baseline; line-height:1;
                 justify-content:center; }
@@ -3072,7 +3088,25 @@ const WDG_KINDS = {
   clock:   { title: "Clock",   body: "analogue face" },
   date:    { title: "Date",    body: "day and month" },
   weather: { title: "Weather", body: "now and next hours" },
+  news:    { title: "News",    body: "UK and world headlines" },
 };
+
+// RSS carries no CORS headers, so the server fetches the feeds and this
+// reads its JSON. Versioned rather than time-checked: the widget repaint
+// runs every second, and rebuilding the strip that often would restart
+// the scroll animation on every tick.
+const NEWSDATA = { items: [], v: 0, t: 0, busy: false };
+async function fetchNews() {
+  if (NEWSDATA.busy || Date.now() - NEWSDATA.t < 300000) return;
+  NEWSDATA.busy = true;
+  try {
+    const j = await (await fetch("/news", { cache: "no-store" })).json();
+    if (j.items && j.items.length) {
+      NEWSDATA.items = j.items; NEWSDATA.v++; NEWSDATA.t = Date.now();
+    }
+  } catch {}
+  NEWSDATA.busy = false;
+}
 const WX_CODE = {
   0:"Clear",1:"Mainly clear",2:"Partly cloudy",3:"Cloudy",45:"Fog",48:"Fog",
   51:"Light drizzle",53:"Drizzle",55:"Drizzle",61:"Light rain",63:"Rain",
@@ -3174,6 +3208,24 @@ function paintWidget(w) {
     drawClock(cv, now);
     return;
   }
+  if (w.wkind === "news") {
+    if (!NEWSDATA.items.length) {
+      box.innerHTML = `<div class="wlbl">Live news</div>
+        <div class="wsm" style="padding:10px 20px 0">fetching headlines\u2026</div>`;
+      return;
+    }
+    if (w.newsV === NEWSDATA.v) return;      // unchanged: leave the scroll alone
+    w.newsV = NEWSDATA.v;
+    const strip = NEWSDATA.items.map(i =>
+      `<b>${escT(i.s)}</b>${escT(i.t)}`).join('<i>\u2022</i>');
+    // pace it by length so a long run of headlines is not a blur and a
+    // short one is not a crawl: roughly one headline every four seconds
+    const dur = Math.max(60, NEWSDATA.items.length * 4);
+    box.innerHTML = `<div class="wlbl">Live news</div>
+      <div class="nwin"><div class="ntrack" style="animation-duration:${dur}s">
+        <span>${strip}</span><span>${strip}</span></div></div>`;
+    return;
+  }
   if (w.wkind === "weather") {
     const d = WX.data;
     if (!d || !d.current) {
@@ -3240,6 +3292,7 @@ setInterval(() => {
   const live = items.filter(i => i.type === "wdg" && i.el.isConnected);
   if (!live.length) return;
   if (live.some(i => i.wkind === "weather")) fetchWeather();
+  if (live.some(i => i.wkind === "news")) fetchNews();
   live.forEach(paintWidget);
 }, 1000);
 
@@ -3315,7 +3368,7 @@ function novStation(m) {
     const p = treeCounts(PROPSTREE, true);
     return { orb: "props", body: `${p.dirs} folders · ${p.leaves} props` };
   }
-  if (m === "apps") return { orb: "apps", body: "clock · date · weather" };
+  if (m === "apps") return { orb: "apps", body: "clock · date · weather · news" };
   if (m === "games") return { orb: "games", body: "tetris · invaders · pac-man" };
   if (m === "settings") return { orb: null, body: "input & controls" };
   return { orb: null, body: "empty" };
