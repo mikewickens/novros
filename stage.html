@@ -3188,9 +3188,28 @@ function hitTest(cur) {
 // no zones, no direction juries. The conflict didn't get solved; it got
 // dissolved (Jared's design).
 
+// Cancelling an animation must SETTLE it, not abandon it. The
+// materialize tween drives scale, opacity and a slight 3D turn-in, and
+// only puts them back when it reaches the end -- so dropping it partway
+// froze a pane at whatever it happened to be holding. Grab a pane while
+// it is still blooming in and it stayed permanently skewed, half-scaled
+// and semi-transparent, with nothing to undo it.
+function settleAnim(c) {
+  const a = c.anim;
+  if (!a) return;
+  c.anim = null;
+  if (a.k === "in" || a.k === "give") {
+    c.inS = 1;
+    c.el.style.opacity = "";
+    if (c.type !== "model") c.ry = 0;
+  } else if (a.k === "hover") {
+    c.hs = 1; c.hch = 0;
+  }
+}
+
 function beginGrab(c, i, cur) {
   c.flying = false;
-  c.anim = null;                                     // a grab beats an animation
+  settleAnim(c);                                     // a grab beats an animation
   c.grabbedBy.push(i);
   lastTouchedId = c.id;
   cur.grabT = performance.now();
@@ -4287,7 +4306,7 @@ async function boot() {
                 unlight();
                 fp.tId = best.id; fp.litT = now;   // fresh strain ramp
                 fp.readyToasted = false;
-                best.flying = false; best.anim = null;
+                best.flying = false; settleAnim(best);
                 toast("aiming: " + (best.def.title || (best.def.src ||
                   best.type).split("/").pop()) + " — hold the strain",
                   900);
