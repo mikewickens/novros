@@ -486,6 +486,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                      border-color:rgba(var(--c32),0.95);
                      box-shadow:0 0 18px rgba(var(--c22),0.5); }
   body.overlay #modes, body.overlay #intro, body.overlay #wpop { display:none; }
+  /* Forced ink. Scoped to the item layer, which is where readability
+     actually suffers over a bright wallpaper; the chrome keeps its own
+     contrast because its pills are already solid. */
+  body.ink-white #behind, body.ink-white #behind * { color:#fff; }
+  body.ink-black #behind, body.ink-black #behind * { color:#0a0c0e; }
+  body.ink-white #behind .card, body.ink-white #behind .panel {
+    text-shadow:0 1px 3px rgba(0,0,0,0.55); }
+  body.ink-black #behind .card, body.ink-black #behind .panel {
+    text-shadow:0 1px 2px rgba(255,255,255,0.3); }
+  body.ink-black #behind .sw.on::after { background:#fff; }
   /* ---------- COLOUR PICKER ---------- */
   #wbtn { width:30px; height:30px; padding:0 !important; border-radius:50% !important;
           position:relative; overflow:hidden; }
@@ -1144,7 +1154,10 @@ function drawRing(sc) {
   // wordmark + status — sized UP (round 4: the clear core has room);
   // dark halo shadow keeps them readable over live video
   x.shadowColor = "rgba(var(--c2),0.9)"; x.shadowBlur = 7;
-  x.fillStyle = `rgba(var(--c41),${0.94 + wp * 0.06})`;
+  // canvas cannot resolve a CSS variable, so this is read out first --
+  // as `rgba(var(--c41),…)` the whole fill was invalid and silently
+  // ignored, leaving the wordmark in whatever colour was set before it
+  x.fillStyle = `rgba(${inkRGB()},${0.94 + wp * 0.06})`;
   const nm = NOV_NAME;
   const fpx = nm.length <= 6 ? 34 : nm.length <= 9 ? 25 : 18;
   x.font = `700 ${fpx}px 'SF Mono', Menlo, monospace`;
@@ -2438,7 +2451,19 @@ const GAME_KINDS = {
 };
 let lastGameId = 0;
 
+// The interface's text colour. AUTO keeps the theme's own tinted white;
+// WHITE and BLACK force it, for backdrops the tint cannot survive.
+// Canvas is why this is a function rather than only a CSS class: the
+// ring, the clock and the games paint their own text and cannot inherit.
+function inkRGB() {
+  const m = (typeof UIPREF !== "undefined" && UIPREF.ink) || "auto";
+  if (m === "white") return "255,255,255";
+  if (m === "black") return "10,12,14";
+  return (getComputedStyle(document.documentElement)
+    .getPropertyValue("--c41").trim()) || "235,250,250";
+}
 function themeRGB(name, fallback) {
+  if (name === "--c41") return `rgb(${inkRGB()})`;
   const v = getComputedStyle(document.documentElement)
     .getPropertyValue(name).trim();
   return `rgb(${v || fallback})`;
@@ -2897,7 +2922,7 @@ addEventListener("mousedown", e => {
   if (g) lastGameId = g.id;
 }, true);
 
-const UIPREF = { modeBar: true };
+const UIPREF = { modeBar: true, ink: "auto" };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
   window.makeGame = k => makeGame(k);
@@ -2912,6 +2937,8 @@ function loadPrefs() {
 function applyPrefs() {
   const m = document.getElementById("modes");
   if (m) m.style.display = UIPREF.modeBar ? "" : "none";
+  document.body.classList.toggle("ink-white", UIPREF.ink === "white");
+  document.body.classList.toggle("ink-black", UIPREF.ink === "black");
   try { localStorage.setItem("novros-ui", JSON.stringify(UIPREF)); } catch {}
 }
 
@@ -2972,6 +2999,13 @@ function settingsHTML() {
       `<button class="ctl" data-p="${i}">${M.k}</button>`).join("")}</div>
     ${CFG_TOGGLES.slice(0, 1).map((t, i) => row(t[0], t[1], sw(0, t[2]()))).join("")}
     <h4>Colour</h4>
+    <div class="row" style="padding-top:2px"><div><div class="nm">Text</div>
+      <div class="hint">force white or black where the tint will not read</div></div>
+      <div class="planes" style="margin:0">
+        ${["auto", "white", "black"].map(k =>
+          `<button class="ctl ink${UIPREF.ink === k ? " on" : ""}" data-ink="${k}"
+            >${k.toUpperCase()}</button>`).join("")}
+      </div></div>
     <div class="wsw"></div>
     <div class="row"><div><div class="nm">Brightness</div>
       <div class="hint">bends the midtones; deep stays deep</div></div>
@@ -3036,6 +3070,13 @@ function openSettings() {
       TUNE[c[2]] = +n.value / scale;
       const o = el.querySelector(`output[data-o="${n.dataset.s}"]`);
       if (o) o.textContent = c[6](+n.value);
+    }));
+  el.querySelectorAll("button[data-ink]").forEach(n =>
+    n.addEventListener("click", e => {
+      e.stopPropagation();
+      UIPREF.ink = n.dataset.ink; applyPrefs();
+      el.querySelectorAll("button[data-ink]").forEach(o =>
+        o.classList.toggle("on", o === n));
     }));
   el.querySelectorAll("button[data-p]").forEach(n =>
     n.addEventListener("click", e => {
