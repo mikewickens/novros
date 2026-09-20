@@ -213,6 +213,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .panel .scroll { transition:none; font-size:14.5px; line-height:1.5; color:#dcf5ee; text-shadow:0 1px 3px rgba(3,18,16,0.55);
                    white-space:pre-wrap; font-family:-apple-system,sans-serif; }
   .panel .scroll b { color:#fff; } .panel .scroll .h { color:#8ff0e4; font-weight:700; }
+  /* NOVROS: the resize corner announces itself on hover, so the grip is
+     discoverable instead of being a secret 26px square. */
+  .card.gripping::after, .panel.gripping::after {
+    content:""; position:absolute; right:4px; bottom:4px; width:17px; height:17px;
+    border-right:2.5px solid rgba(150,255,236,0.95);
+    border-bottom:2.5px solid rgba(150,255,236,0.95);
+    border-bottom-right-radius:5px; pointer-events:none;
+    filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); }
   .cursor { position:absolute; width:28px; height:28px; margin:-14px 0 0 -14px;
             border-radius:50%; border:2.5px solid rgba(111,229,214,0.9);
             background:rgba(111,229,214,0.12); pointer-events:none; z-index:999; }
@@ -297,7 +305,7 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">POINT (index out, others folded) = arrow cursor · hover = open · quick finger-press = click · PRESS AND HOLD = drag it around · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll, shift+wheel or corner-drag = resize · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
+<div id="hint">POINT (index out, others folded) = arrow cursor · hover = open · quick finger-press = click · PRESS AND HOLD = drag it around · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll a note / RESIZE a model or image, corner-drag = resize anything · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
 
@@ -3429,8 +3437,14 @@ async function renderLoop() {
 //   double right click      reset an item's rotation to flat
 // ============================================================
 const MOUSE_ID = 99;
-const GRIP = 26;                 // px: corner zone that means "resize"
+// The corner zone that means "resize". Scaled off the item's RENDERED
+// size, because a flat 26px square is most of a shrunken prop and an
+// invisible speck on one stretched to fill the screen.
+function gripSize(r) {
+  return Math.max(18, Math.min(46, Math.min(r.width, r.height) * 0.16));
+}
 let mDrag = null;                // the active mouse interaction
+let gripEl = null;               // element currently showing its corner handle
 
 function mouseCursor(x, y) {
   const cur = getCursor(MOUSE_ID);
@@ -3441,9 +3455,16 @@ function mouseCursor(x, y) {
 }
 // A corner grip, in the item's own screen rect.
 function inGrip(c, x, y) {
+  if (c.type === "orb" || c.type === "widget") return false;
   const r = c.el.getBoundingClientRect();
-  return x > r.right - GRIP && x < r.right + 8 &&
-         y > r.bottom - GRIP && y < r.bottom + 8;
+  const g = gripSize(r);
+  return x > r.right - g && x < r.right + 10 &&
+         y > r.bottom - g && y < r.bottom + 10;
+}
+// Scale about the item's centre, clamped to the same range two-hand
+// stretch uses, so hand and mouse cannot disagree about the limits.
+function setScale(c, s) {
+  c.scale = Math.min(12, Math.max(0.12, s));
 }
 function scrollBy(c, dy) {
   if (!c.body || !c.body.parentElement) return false;
@@ -3491,7 +3512,7 @@ addEventListener("mousedown", e => {
   }
   if (e.button !== 0) return;
 
-  if (inGrip(c, x, y) && c.type !== "orb") {              // CORNER = resize
+  if (inGrip(c, x, y)) {                                  // CORNER = resize
     const d0 = Math.hypot(x - c.x, y - c.y) || 1;
     mDrag = { c, cur, kind: "resize", d0, s0: c.scale || 1 };
     c.el.classList.add("grabbed");
@@ -3506,9 +3527,11 @@ addEventListener("mousemove", e => {
   const x = e.clientX, y = e.clientY;
   if (!mDrag) {                            // idle: hint what the corner does
     const c = hitTest({ x, y });
-    document.body.style.cursor =
-      c && c.type !== "orb" && inGrip(c, x, y) ? "nwse-resize"
-      : c ? "grab" : "";
+    const onGrip = !!c && inGrip(c, x, y);
+    if (gripEl && gripEl !== (c && c.el)) gripEl.classList.remove("gripping");
+    gripEl = onGrip ? c.el : null;
+    if (gripEl) gripEl.classList.add("gripping");
+    document.body.style.cursor = onGrip ? "nwse-resize" : c ? "grab" : "";
     return;
   }
   const { c, cur } = mDrag;
@@ -3524,7 +3547,7 @@ addEventListener("mousemove", e => {
   }
   if (mDrag.kind === "resize") {
     const d = Math.hypot(x - c.x, y - c.y);
-    c.scale = Math.min(12, Math.max(0.12, mDrag.s0 * (d / mDrag.d0)));
+    setScale(c, mDrag.s0 * (d / mDrag.d0));
     return;
   }
   // grab: the first real movement converts a note's scroll-grab into a
@@ -3552,6 +3575,7 @@ addEventListener("mouseup", e => {
         performance.now() - mDrag.t < 300) { c.rx = 0; c.ry = 0; c.rvy = 0; }
   } else if (kind === "resize") {
     c.el.classList.remove("grabbed");
+    c.el.classList.remove("gripping"); gripEl = null;
   } else {
     const click = !mDrag.moved;
     endGrab(c, MOUSE_ID, cur);
@@ -3563,13 +3587,12 @@ addEventListener("mouseup", e => {
 addEventListener("wheel", e => {
   const c = hitTest({ x: e.clientX, y: e.clientY });
   if (!c) return;
-  if (e.shiftKey) {                                  // shift+wheel = resize
-    e.preventDefault();
-    c.scale = Math.min(12, Math.max(0.12,
-      (c.scale || 1) * (e.deltaY > 0 ? 0.92 : 1.08)));
-    return;
-  }
-  if (scrollBy(c, e.deltaY)) e.preventDefault();     // otherwise: scroll it
+  e.preventDefault();
+  // Scroll it if it HAS anything to scroll -- a note, a folder pane --
+  // and otherwise resize it. A hologram or an image has no scroll, and
+  // the wheel is the first thing a hand reaches for to size one.
+  if (!e.shiftKey && scrollBy(c, e.deltaY)) return;
+  setScale(c, (c.scale || 1) * (e.deltaY > 0 ? 0.92 : 1.08));
 }, { passive: false });
 
 if (ROLE === "render") {
