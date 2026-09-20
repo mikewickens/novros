@@ -720,7 +720,16 @@ const TUNE = {
                          // poses can never be confused with each other
   pointArch:     1.30,   // index must genuinely reach out past its knuckle
   pointDip:      1.12,   // absolute bend floor (kept as a second chance)
-  pointDipFrac:  0.82,   // THE REAL TEST: a press is a RELATIVE drop from
+  // THE PRESS, chiefly measured as the THUMB closing onto the pointing
+  // index. The finger-bend test below it is a 2D projection of how far
+  // the tip sits from the wrist, which barely moves when the press is a
+  // forward jab -- and with the camera off to one side, that is the
+  // press most people make. The thumb travels ACROSS the palm, so it
+  // reads clearly from any angle, and it reuses `ratio`, the most
+  // reliable measurement in the whole tracker.
+  pressGap:      0.46,   // thumb-to-index gap, over the hand's own span
+  pressRelease:  1.38,   // x pressGap -- how far back out it must come
+  pointDipFrac:  0.82,   // the bend test, kept as a second way in: a
                          // how straight YOUR finger was a moment ago, so it
                          // works for a small press and for any hand
   pointRecFrac:  0.92,   // ... and it must come back up past this to fire
@@ -4462,8 +4471,14 @@ async function boot() {
             : (cur.ptPeak * 0.99 + f8v * 0.01);     // ... otherwise decay slowly
           const dipBar = cur.ptPeak * TUNE.pointDipFrac;
           const recBar = cur.ptPeak * TUNE.pointRecFrac;
-          const bent = cur.ptBent ? f8v < recBar          // hysteresis
-                                  : (f8v < dipBar || f8v < TUNE.pointDip);
+          // EITHER signature presses: the thumb closing on the index, or
+          // the index itself bending. Whichever your hand does first.
+          const thumbIn = cur.ptBent
+            ? ratio < TUNE.pressGap * TUNE.pressRelease
+            : ratio < TUNE.pressGap;
+          const bendIn = cur.ptBent ? f8v < recBar
+                                    : (f8v < dipBar || f8v < TUNE.pointDip);
+          const bent = thumbIn || bendIn;
           if (bent && !cur.ptBent) { cur.ptBent = true; cur.ptDipT = now; }
           else if (!bent && cur.ptBent) {
             cur.ptBent = false;
@@ -4541,8 +4556,9 @@ async function boot() {
             cur.ptDrag = null;
           }
 
-          cur.ptDbg = `pt f8 ${f8v.toFixed(2)} peak ${cur.ptPeak.toFixed(2)}` +
-                      ` dip<${dipBar.toFixed(2)} ${bent ? "PRESSED" : "-"}` +
+          cur.ptDbg = `pt gap ${ratio.toFixed(2)}<${TUNE.pressGap}` +
+                      ` f8 ${f8v.toFixed(2)} dip<${dipBar.toFixed(2)}` +
+                      ` ${bent ? (thumbIn ? "PRESSED(thumb)" : "PRESSED(bend)") : "-"}` +
                       ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}` +
                       `${cur.ptDrag && cur.ptDrag !== "none" ? " DRAGGING" : ""}` +
                       `${cur.dwArm ? "" : " [move to re-arm]"}`;
