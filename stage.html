@@ -4438,6 +4438,15 @@ async function boot() {
                       f8v > TUNE.pointArch && aspect <= 6;
         if (twoOut) { cur.ptGood = 0; cur.dwT = 0; cur.dwArm = false; }
         if (ptSig) cur.ptGood = now;
+        // A press BENDS the index, which by definition fails the point
+        // test above -- so a held press starved the grace window and the
+        // pointer lapsed mid-drag. The drag does not even begin until
+        // pointTapMs (420ms) and the grace ran out at 520ms, which left
+        // about a tenth of a second of dragging before the window was
+        // set back down. While the finger is bent, or a drag is running,
+        // the hand is still pointing; it is simply pressing as well.
+        else if ((cur.ptBent || cur.ptDrag) &&
+                 now - (cur.ptDipT || 0) < 8000) cur.ptGood = now;
         cur.ptActive = (now - (cur.ptGood || 0)) < TUNE.pointGraceMs;
         if (cur.ptActive) {
           // THE PRESS, measured RELATIVELY. An absolute floor was the
