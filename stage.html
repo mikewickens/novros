@@ -260,6 +260,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .panel .scroll b { color:#fff; } .panel .scroll .h { color:rgb(var(--c26)); font-weight:700; }
   /* NOVROS: the resize corner announces itself on hover, so the grip is
      discoverable instead of being a secret 26px square. */
+  .card.rotgrip::before, .panel.rotgrip::before {
+    content:""; position:absolute; left:4px; bottom:4px; width:17px; height:17px;
+    border-left:2.5px solid rgba(var(--c30),0.95);
+    border-bottom:2.5px solid rgba(var(--c30),0.95);
+    border-bottom-left-radius:11px; pointer-events:none;
+    filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); }
   .card.gripping::after, .panel.gripping::after {
     content:""; position:absolute; right:4px; bottom:4px; width:17px; height:17px;
     border-right:2.5px solid rgba(var(--c27),0.95);
@@ -610,6 +616,14 @@ const TUNE = {
   doubleBlinkMs: 620,    // two deliberate blinks inside this = double
   winkMs:        260,    // one eye held shut = pick up / put down
   winkDrag:      true,
+  // --- rotation ---
+  rotGain:      0.0055,  // radians of tumble per pixel of drag. Half what
+                         // it was: the old rate crossed a right angle in
+                         // 130px, which is a flick, not a control.
+  rotFine:      0.28,    // hold SHIFT for fine rotation
+  rotSmooth:    0.055,   // seconds: rotation EASES to where you point it
+                         // instead of snapping, which is most of what
+                         // makes it feel controllable rather than twitchy
   // --- two-finger scroll ---
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
@@ -2936,7 +2950,18 @@ function physics(dt) {
         setTimeout(() => c.el.remove(), 300);
       }
     }
-    if (c.type === "model" && !(c.grabbedBy.length &&
+    // ROTATION EASING: a drag sets a TARGET and the item travels to it,
+    // rather than being nailed to the raw pointer delta. Same total
+    // travel, but the motion has weight and a stray jitter no longer
+    // shows up one-for-one in the object.
+    if (c.trot) {
+      const rk = 1 - Math.exp(-dt / Math.max(0.008, TUNE.rotSmooth));
+      c.rx = (c.rx || 0) + (c.trot.x - (c.rx || 0)) * rk;
+      c.ry = (c.ry || 0) + (c.trot.y - (c.ry || 0)) * rk;
+      c.rz = (c.rz || 0) + (c.trot.z - (c.rz || 0)) * rk;
+    }
+    // the model's idle drift must not fight a rotation in progress
+    if (c.type === "model" && !c.trot && !(c.grabbedBy.length &&
         (c.mode === "rotate" || c.mode === "stretch"))) {
       // Build 1: spin momentum decays toward the stately idle turn —
       // a hologram that sits dead-still reads as a picture. (1.3: the
@@ -3765,13 +3790,12 @@ async function boot() {
             // Build 1: orbit — hand X spins yaw, hand Y tilts pitch.
             // GLASS ERA: UI panes clamp yaw too (past ~90° the text
             // mirrors); models keep the free spin + release momentum
-            const ROT = 0.012;
-            let ny = held.rot0y + (cur.x - held.grabX0) * ROT;
-            if (held.type !== "model")
-              ny = Math.max(-1.2, Math.min(1.2, ny));
-            held.ry = ny;
-            held.rx = Math.max(-1.2, Math.min(1.2,
-              held.rot0x + (cur.y - held.grabY0) * ROT));
+            // same gain and same easing as the mouse, so a rotation
+            // feels like one act whichever plane drives it
+            const ROT = TUNE.rotGain;
+            setRot(held, held.rot0x + (cur.y - held.grabY0) * ROT,
+                         held.rot0y + (cur.x - held.grabX0) * ROT,
+                         held.rz || 0);
             if (held.type === "model") {
               const rh = cur.history;
               if (rh.length >= 2) {
@@ -4405,6 +4429,19 @@ function inGrip(c, x, y) {
   return x > r.right - g && x < r.right + 10 &&
          y > r.bottom - g && y < r.bottom + 10;
 }
+// The rotate handle sits in the opposite corner to the resize one, so
+// the two can never be confused by feel.
+function inRotGrip(c, x, y) {
+  if (c.type === "orb" || c.type === "widget") return false;
+  const r = c.el.getBoundingClientRect();
+  const g = gripSize(r);
+  return x > r.left - 10 && x < r.left + g &&
+         y > r.bottom - g && y < r.bottom + 10;
+}
+function setRot(c, x, y, z) {
+  const lim = v => Math.max(-1.2, Math.min(1.2, v));
+  c.trot = { x: lim(x), y: c.type === "model" ? y : lim(y), z };
+}
 // Scale about the item's centre, clamped to the same range two-hand
 // stretch uses, so hand and mouse cannot disagree about the limits.
 function setScale(c, s) {
@@ -4457,6 +4494,15 @@ addEventListener("mousedown", e => {
   }
   if (e.button !== 0) return;
 
+  if (inRotGrip(c, x, y)) {                  // BOTTOM-LEFT = spin in place
+    // This handle rotates by the ANGLE you drag around the item's own
+    // centre, the way a design tool's rotate handle does, so a slow
+    // circle is a slow, exact turn. Right-drag still tumbles in 3D.
+    mDrag = { c, cur, kind: "roll",
+              a0: Math.atan2(y - c.y, x - c.x), r0: c.rz || 0 };
+    c.el.classList.add("grabbed");
+    return;
+  }
   if (inGrip(c, x, y)) {                                  // CORNER = resize
     const d0 = Math.hypot(x - c.x, y - c.y) || 1;
     mDrag = { c, cur, kind: "resize", d0, s0: c.scale || 1 };
@@ -4474,21 +4520,31 @@ addEventListener("mousemove", e => {
   if (!mDrag) {                            // idle: hint what the corner does
     const c = hitTest({ x, y });
     const onGrip = !!c && inGrip(c, x, y);
-    if (gripEl && gripEl !== (c && c.el)) gripEl.classList.remove("gripping");
-    gripEl = onGrip ? c.el : null;
-    if (gripEl) gripEl.classList.add("gripping");
-    document.body.style.cursor = onGrip ? "nwse-resize" : c ? "grab" : "";
+    const onRot = !!c && !onGrip && inRotGrip(c, x, y);
+    if (gripEl && gripEl !== (c && c.el))
+      gripEl.classList.remove("gripping", "rotgrip");
+    gripEl = (onGrip || onRot) ? c.el : null;
+    if (c) c.el.classList.toggle("gripping", onGrip);
+    if (c) c.el.classList.toggle("rotgrip", onRot);
+    document.body.style.cursor =
+      onGrip ? "nwse-resize" : onRot ? "crosshair" : c ? "grab" : "";
     return;
   }
   const { c, cur } = mDrag;
   cur.x = x; cur.y = y;
 
   if (mDrag.kind === "rotate") {
-    const ROT = 0.012;
-    let ny = mDrag.r0y + (x - mDrag.x0) * ROT;
-    if (c.type !== "model") ny = Math.max(-1.2, Math.min(1.2, ny));
-    c.ry = ny;
-    c.rx = Math.max(-1.2, Math.min(1.2, mDrag.r0x + (y - mDrag.y0) * ROT));
+    const ROT = TUNE.rotGain * (e.shiftKey ? TUNE.rotFine : 1);
+    setRot(c, mDrag.r0x + (y - mDrag.y0) * ROT,
+              mDrag.r0y + (x - mDrag.x0) * ROT, c.rz || 0);
+    return;
+  }
+  if (mDrag.kind === "roll") {
+    let d = Math.atan2(y - c.y, x - c.x) - mDrag.a0;
+    while (d > Math.PI) d -= 2 * Math.PI;          // shortest way round
+    while (d < -Math.PI) d += 2 * Math.PI;
+    if (e.shiftKey) d *= TUNE.rotFine;
+    setRot(c, c.rx || 0, c.ry || 0, mDrag.r0 + d);
     return;
   }
   if (mDrag.kind === "resize") {
@@ -4515,11 +4571,18 @@ addEventListener("mouseup", e => {
   cur.x = x; cur.y = y;
   document.body.style.cursor = "";
 
-  if (kind === "rotate") {
+  if (kind === "rotate" || kind === "roll") {
     c.el.classList.remove("grabbed");
+    c.el.classList.remove("rotgrip");
     // a right-click that never travelled flattens the item back out
-    if (Math.hypot(x - mDrag.x0, y - mDrag.y0) < 4 &&
-        performance.now() - mDrag.t < 300) { c.rx = 0; c.ry = 0; c.rvy = 0; }
+    if (kind === "rotate" && Math.hypot(x - mDrag.x0, y - mDrag.y0) < 4 &&
+        performance.now() - mDrag.t < 300) {
+      c.trot = { x: 0, y: 0, z: 0 }; c.rvy = 0;
+      setTimeout(() => { if (c.trot) c.trot = null; }, 500);
+    } else {
+      // let the ease finish, THEN hand the item back to its own idle
+      setTimeout(() => { c.trot = null; }, 420);
+    }
   } else if (kind === "resize") {
     c.el.classList.remove("grabbed");
     c.el.classList.remove("gripping"); gripEl = null;
