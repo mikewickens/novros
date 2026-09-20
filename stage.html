@@ -297,7 +297,7 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">POINT (index out, others folded) = arrow cursor · tap your finger = open a folder · double-tap = open a file / close it · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll, shift+wheel or corner-drag = resize · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
+<div id="hint">POINT (index out, others folded) = arrow cursor · hover = open · quick finger-press = click · PRESS AND HOLD = drag it around · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll, shift+wheel or corner-drag = resize · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
 
@@ -2445,10 +2445,44 @@ async function boot() {
             }
           } else if (cur.ring) cur.ring.style.setProperty("--p", "0");
 
+          // PRESS AND HOLD TO DRAG -- the mouse-button idiom, by hand.
+          // A quick bend-and-release is a click; KEEPING the finger bent
+          // past that same window is a button held down, so the thing
+          // under the arrow comes with you until you straighten again.
+          // This is how you move an open window: press on it anywhere
+          // and go. No need to find the title bar, and no pinch, which
+          // is the part that does not survive an off-axis camera.
+          if (cur.ptBent && !cur.ptDrag &&
+              now - (cur.ptDipT || 0) > TUNE.pointTapMs) {
+            const tgt = hitTest(cur);
+            if (tgt && tgt.grabbedBy.length === 0) {
+              beginGrab(tgt, i, cur);
+              // Force MOVE even on a note body, which would otherwise
+              // grab into scroll: dragging a window should move the
+              // window. Scrolling stays on the body's own pinch-drag.
+              if (tgt.mode !== "pinned") {
+                tgt.mode = "move";
+                tgt.ox = tgt.x - cur.x; tgt.oy = tgt.y - cur.y;
+                tgt.holdX = cur.x; tgt.holdY = cur.y;
+                tgt.holdT = now; tgt.hch = 0.6;
+              }
+              cur.ptDrag = tgt;
+            } else cur.ptDrag = tgt ? null : "none";
+          }
+          if (!cur.ptBent && cur.ptDrag) {              // straighten = drop
+            if (cur.ptDrag !== "none") endGrab(cur.ptDrag, i, cur);
+            cur.ptDrag = null;
+          }
+
           cur.ptDbg = `pt f8 ${f8v.toFixed(2)} peak ${cur.ptPeak.toFixed(2)}` +
                       ` dip<${dipBar.toFixed(2)} ${bent ? "PRESSED" : "-"}` +
-                      ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}`;
+                      ` dwell ${cur.dwT ? (((now - cur.dwT) / TUNE.dwellMs) * 100).toFixed(0) + "%" : "-"}` +
+                      `${cur.ptDrag && cur.ptDrag !== "none" ? " DRAGGING" : ""}`;
         } else {
+          if (cur.ptDrag) {          // pointer lost mid-drag: set it down
+            if (cur.ptDrag !== "none") endGrab(cur.ptDrag, i, cur);
+            cur.ptDrag = null;
+          }
           cur.ptBent = false; cur.dwT = 0; cur.ptPeak = 0;
           if (cur.ring) cur.ring.style.setProperty("--p", "0");
           cur.ptDbg = `pt OFF  f8 ${f8v.toFixed(2)} back ${backMean.toFixed(2)}` +
