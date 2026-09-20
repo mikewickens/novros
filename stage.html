@@ -315,6 +315,35 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                letter-spacing:-0.01em; }
   .wdg .dmon { font:700 23px -apple-system,sans-serif; color:rgba(var(--c39),0.62);
                letter-spacing:-0.01em; }
+  /* ---------- SETTINGS PANEL ---------- */
+  .cfg { padding:2px 4px 20px; }
+  .cfg h4 { margin:22px 0 10px; font:700 10px "SF Mono",Menlo,monospace;
+            letter-spacing:0.2em; color:rgba(var(--c22),0.95); text-transform:uppercase;
+            border-bottom:1px solid rgba(var(--c33),0.2); padding-bottom:7px; }
+  .cfg h4:first-child { margin-top:4px; }
+  .cfg .row { display:flex; align-items:center; justify-content:space-between;
+              gap:14px; padding:9px 2px; }
+  .cfg .row .nm { font:500 13px -apple-system,sans-serif; color:rgba(var(--c41),0.94); }
+  .cfg .row .hint { font:400 11px -apple-system,sans-serif;
+                    color:rgba(var(--c39),0.5); margin-top:2px; }
+  .cfg .sl { flex:0 0 152px; display:flex; align-items:center; gap:9px; }
+  .cfg .sl output { font:600 11px "SF Mono",Menlo,monospace; width:42px;
+                    text-align:right; color:rgba(var(--c22),0.95); }
+  /* an iOS-style switch, because a checkbox on glass reads as a hole */
+  .sw { position:relative; flex:0 0 44px; height:25px; border-radius:13px;
+        cursor:pointer; background:rgba(var(--c5),0.75);
+        border:1px solid rgba(var(--c33),0.3); transition:all .18s ease; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:19px; height:19px;
+               border-radius:50%; background:rgba(var(--c39),0.55); transition:all .18s ease; }
+  .sw.on { background:rgba(var(--c22),0.9); border-color:rgba(var(--c30),0.9); }
+  .sw.on::after { left:22px; background:#fff; }
+  .cfg .planes { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 6px; }
+  .cfg .planes button { cursor:pointer; padding:7px 10px; border-radius:8px;
+     font:600 10px "SF Mono",Menlo,monospace; letter-spacing:0.08em;
+     color:rgba(var(--c39),0.8); background:rgba(var(--c5),0.55);
+     border:1px solid rgba(var(--c33),0.3); }
+  .cfg .planes button.on { color:rgb(var(--c5)); background:rgba(var(--c22),0.92);
+     border-color:rgba(var(--c30),0.95); }
   .cursor { position:absolute; width:28px; height:28px; margin:-14px 0 0 -14px;
             border-radius:50%; border:2.5px solid rgba(var(--c22),0.9);
             background:rgba(var(--c22),0.12); pointer-events:none; z-index:999; }
@@ -409,31 +438,32 @@ SPDX-License-Identifier: AGPL-3.0-or-later
           -webkit-backdrop-filter:blur(22px);
           box-shadow:0 18px 54px rgba(0,0,0,0.55); }
   #wpop.open { display:block; }
-  #wheel { position:relative; width:200px; height:200px; margin:0 auto 14px;
+  .wheel { position:relative; width:200px; height:200px; margin:0 auto 14px;
            border-radius:50%; cursor:crosshair;
            background:radial-gradient(circle, #fff 0%, rgba(255,255,255,0) 68%),
              conic-gradient(#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000);
            box-shadow:inset 0 0 0 1px rgba(255,255,255,0.22), 0 4px 16px rgba(0,0,0,0.45); }
-  #wdot { position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px;
+  .wdot { position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px;
           border-radius:50%; border:2.5px solid #fff; pointer-events:none;
           box-shadow:0 0 0 1.5px rgba(0,0,0,0.55), 0 2px 7px rgba(0,0,0,0.6); }
-  #wpop label { display:block; font:600 9.5px "SF Mono",Menlo,monospace;
+  #wpop label, .cfg label { display:block; font:600 9.5px "SF Mono",Menlo,monospace;
                 letter-spacing:0.16em; color:rgba(var(--c39),0.62);
                 text-transform:uppercase; margin:12px 0 6px; }
-  #wpop input[type=range] { width:100%; height:5px; -webkit-appearance:none;
+  #wpop input[type=range], .cfg input[type=range] { width:100%; height:5px; -webkit-appearance:none;
       border-radius:3px; background:linear-gradient(90deg,#000,rgb(var(--c33)),#fff);
       outline:none; }
-  #wpop input[type=range]::-webkit-slider-thumb { -webkit-appearance:none;
+  #wpop input[type=range]::-webkit-slider-thumb,
+  .cfg input[type=range]::-webkit-slider-thumb { -webkit-appearance:none;
       width:15px; height:15px; border-radius:50%; background:#fff; cursor:pointer;
       box-shadow:0 0 0 1.5px rgba(0,0,0,0.5), 0 2px 5px rgba(0,0,0,0.5); }
-  #wsw { display:flex; gap:6px; margin-top:12px; }
-  #wsw b { flex:1; height:19px; border-radius:6px; cursor:pointer; display:block;
+  .wsw { display:flex; gap:6px; margin-top:12px; }
+  .wsw b { flex:1; height:19px; border-radius:6px; cursor:pointer; display:block;
            box-shadow:inset 0 0 0 1px rgba(255,255,255,0.25); transition:transform .12s; }
-  #wsw b:hover { transform:translateY(-2px); }
-  #wrow { display:flex; justify-content:space-between; align-items:center;
+  .wsw b:hover { transform:translateY(-2px); }
+  .wrow { display:flex; justify-content:space-between; align-items:center;
           margin-top:13px; font:600 10.5px "SF Mono",Menlo,monospace;
           color:rgba(var(--c39),0.78); }
-  #wrst { cursor:pointer; padding:5px 9px; border-radius:7px;
+  .wrst { cursor:pointer; padding:5px 9px; border-radius:7px;
           border:1px solid rgba(var(--c33),0.35); background:rgba(var(--c5),0.5);
           color:rgba(var(--c39),0.85); font:inherit; }
   #boot { position:absolute; inset:0; display:flex; align-items:center;
@@ -493,13 +523,13 @@ setTimeout(function () {
   <div class="sub">NO VR OPERATING SYSTEM</div>
 </div>
 <div id="modes"></div>
-<div id="wpop">
-  <div id="wheel"><div id="wdot"></div></div>
+<div id="wpop" class="pick">
+  <div class="wheel"><div class="wdot"></div></div>
   <label>Brightness</label>
-  <input id="wlum" type="range" min="70" max="135" value="100">
+  <input class="wlum" type="range" min="70" max="135" value="100">
   <label>Presets</label>
-  <div id="wsw"></div>
-  <div id="wrow"><span id="whex">#6FE5D6</span><button id="wrst">RESET</button></div>
+  <div class="wsw"></div>
+  <div class="wrow"><span class="whex">#6FE5D6</span><button class="wrst">RESET</button></div>
 </div>
 <div id="debug"></div>
 <div id="toast"></div>
@@ -1838,41 +1868,71 @@ function setMode(i) {
 // ============================================================
 const PRESETS = [168, 200, 232, 276, 318, 8, 34, 96];
 
+// Every mounted picker stays in step, wherever it lives -- the popover
+// and the one inside Settings are the same control twice, not two.
 function syncPicker() {
-  const dot = document.getElementById("wdot");
-  if (dot) {
-    const R = 100, a = THEME.hue * Math.PI / 180;
-    const rr = Math.min(1, THEME.sat) * (R * 0.94);
-    dot.style.left = (R + Math.sin(a) * rr) + "px";
-    dot.style.top = (R - Math.cos(a) * rr) + "px";
-    dot.style.background = `hsl(${THEME.hue} ${Math.round(THEME.sat * 78)}% 58%)`;
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue("--c22").trim().split(",").map(Number);
+  const hex = v.length === 3 ? "#" + v.map(n =>
+    Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0")).join("").toUpperCase() : "";
+  document.querySelectorAll(".pick").forEach(root => {
+    const dot = root.querySelector(".wdot");
+    const wheel = root.querySelector(".wheel");
+    if (dot && wheel) {
+      const R = wheel.clientWidth / 2 || 100, a = THEME.hue * Math.PI / 180;
+      const rr = Math.min(1, THEME.sat) * (R * 0.94);
+      dot.style.left = (R + Math.sin(a) * rr) + "px";
+      dot.style.top = (R - Math.cos(a) * rr) + "px";
+      dot.style.background = `hsl(${THEME.hue} ${Math.round(THEME.sat * 78)}% 58%)`;
+    }
+    const h = root.querySelector(".whex"); if (h && hex) h.textContent = hex;
+    const l = root.querySelector(".wlum");
+    if (l && document.activeElement !== l) l.value = Math.round(THEME.gam * 100);
+  });
+}
+
+function mountPicker(root) {
+  if (!root || root.dataset.picked) return;
+  root.dataset.picked = "1";
+  root.classList.add("pick");
+  const wheel = root.querySelector(".wheel");
+  const sw = root.querySelector(".wsw");
+  if (sw) {
+    sw.innerHTML = PRESETS.map(h =>
+      `<b data-h="${h}" style="background:hsl(${h} 74% 58%)"></b>`).join("");
+    sw.querySelectorAll("b").forEach(b => b.addEventListener("click", e => {
+      e.stopPropagation(); THEME.apply(+b.dataset.h, 1, THEME.gam);
+    }));
   }
-  const hex = document.getElementById("whex");
-  if (hex) {
-    const v = getComputedStyle(document.documentElement)
-      .getPropertyValue("--c22").trim().split(",").map(Number);
-    if (v.length === 3)
-      hex.textContent = "#" + v.map(n =>
-        Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0")).join("").toUpperCase();
+  if (wheel) {
+    const pick = e => {
+      const r = wheel.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2);
+      const dy = e.clientY - (r.top + r.height / 2);
+      THEME.apply((Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360,
+                  Math.min(1, Math.hypot(dx, dy) / (r.width / 2 * 0.94)), THEME.gam);
+    };
+    let dragging = false;
+    wheel.addEventListener("mousedown", e => {
+      e.stopPropagation(); e.preventDefault(); dragging = true; pick(e);
+    });
+    addEventListener("mousemove", e => { if (dragging) pick(e); });
+    addEventListener("mouseup", () => { dragging = false; });
   }
-  const lum = document.getElementById("wlum");
-  if (lum && document.activeElement !== lum) lum.value = Math.round(THEME.gam * 100);
+  const lum = root.querySelector(".wlum");
+  if (lum) lum.addEventListener("input",
+    () => THEME.apply(THEME.hue, THEME.sat, +lum.value / 100));
+  const rst = root.querySelector(".wrst");
+  if (rst) rst.addEventListener("click", e => {
+    e.stopPropagation(); THEME.apply(168, 1, 1);
+  });
+  syncPicker();
 }
 
 function buildPicker() {
   const btn = document.getElementById("wbtn");
   const pop = document.getElementById("wpop");
-  const wheel = document.getElementById("wheel");
-  const lum = document.getElementById("wlum");
-  if (!btn || !pop || !wheel) return;
-
-  document.getElementById("wsw").innerHTML = PRESETS.map(h =>
-    `<b data-h="${h}" style="background:hsl(${h} 74% 58%)"></b>`).join("");
-  document.querySelectorAll("#wsw b").forEach(b =>
-    b.addEventListener("click", e => {
-      e.stopPropagation(); THEME.apply(+b.dataset.h, 1, THEME.gam);
-    }));
-
+  if (!btn || !pop) return;
   btn.addEventListener("click", e => {
     e.stopPropagation(); pop.classList.toggle("open"); syncPicker();
   });
@@ -1882,27 +1942,7 @@ function buildPicker() {
   addEventListener("keydown", e => {
     if (e.key === "Escape") pop.classList.remove("open");
   });
-
-  const pick = e => {
-    const r = wheel.getBoundingClientRect();
-    const dx = e.clientX - (r.left + r.width / 2);
-    const dy = e.clientY - (r.top + r.height / 2);
-    const hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-    const sat = Math.min(1, Math.hypot(dx, dy) / (r.width / 2 * 0.94));
-    THEME.apply(hue, sat, THEME.gam);
-  };
-  let dragging = false;
-  wheel.addEventListener("mousedown", e => {
-    e.stopPropagation(); e.preventDefault(); dragging = true; pick(e);
-  });
-  addEventListener("mousemove", e => { if (dragging) pick(e); });
-  addEventListener("mouseup", () => { dragging = false; });
-
-  lum.addEventListener("input", () => THEME.apply(THEME.hue, THEME.sat, +lum.value / 100));
-  document.getElementById("wrst").addEventListener("click", e => {
-    e.stopPropagation(); THEME.apply(168, 1, 1);
-  });
-  syncPicker();
+  mountPicker(pop);
 }
 
 function buildModes() {
@@ -1920,33 +1960,139 @@ function buildModes() {
   setMode(MODES[i0] ? i0 : 0);
 }
 
-// The settings station: says what is wired, in one place.
+// ============================================================
+// SETTINGS -- every knob in one place
+// ------------------------------------------------------------
+// The panel is an ordinary board item, so it moves, scales and closes
+// like everything else. Its controls bind straight to the live TUNE,
+// INPUT and THEME objects, so a change lands on the very next frame
+// with nothing to apply or save. What is worth keeping is kept.
+// ============================================================
+const UIPREF = { modeBar: true };
+if (typeof window !== "undefined") {
+  window.UIPREF = UIPREF;
+  window.openSettings = () => openSettings();   // hoisted: safe to wrap
+  window.setMode = i => setMode(i);
+}
+function loadPrefs() {
+  try { Object.assign(UIPREF, JSON.parse(localStorage.getItem("novros-ui") || "{}")); }
+  catch {}
+  applyPrefs();
+}
+function applyPrefs() {
+  const m = document.getElementById("modes");
+  if (m) m.style.display = UIPREF.modeBar ? "" : "none";
+  try { localStorage.setItem("novros-ui", JSON.stringify(UIPREF)); } catch {}
+}
+
+// name, hint, get, set  -- sliders carry their own scaling so the panel
+// shows human numbers while TUNE keeps its own units
+const CFG_SLIDERS = [
+  ["Hover delay", "how long a resting hand waits before it opens something",
+   "dwellMs", 60, 900, 10, v => v + "ms"],
+  ["Travel threshold", "how fast counts as moving, and so selects nothing",
+   "dwellMoveBar", 60, 400, 10, v => (v / 100).toFixed(1), 100],
+  ["Scroll speed", "two-finger scroll, and the mouse wheel",
+   "scrollGain", 50, 300, 10, v => (v / 100).toFixed(1) + "x", 100],
+  ["Rotate speed", "how far a drag turns something",
+   "rotGain", 15, 150, 5, v => (v / 10000).toFixed(4), 10000],
+  ["Rotate smoothing", "how much weight a rotation has",
+   "rotSmooth", 10, 200, 5, v => (v / 1000).toFixed(2) + "s", 1000],
+  ["Press sensitivity", "how far the finger must bend to click",
+   "pointDipFrac", 70, 95, 1, v => v + "%", 100],
+  ["Head speed", "screen travel per unit of head turn",
+   "headGain", 10, 90, 2, v => (v / 10).toFixed(1) + "x", 10],
+  ["Blink threshold", "shorter than this is an involuntary blink",
+   "blinkMinMs", 100, 420, 10, v => v + "ms"],
+];
+const CFG_TOGGLES = [
+  ["Mode bar", "keep the input buttons on screen, top right",
+   () => UIPREF.modeBar, v => { UIPREF.modeBar = v; applyPrefs(); }],
+  ["Hover to click", "resting on something opens it",
+   () => TUNE.dwellClick, v => TUNE.dwellClick = v],
+  ["Two-finger scroll", "index and middle out scrolls a pane",
+   () => TUNE.twoFingerScroll, v => TUNE.twoFingerScroll = v],
+  ["Hold to rotate", "a held item turns after a second of stillness",
+   () => TUNE.autoRotate, v => TUNE.autoRotate = v],
+  ["Wink to carry", "in head control, a wink picks up and puts down",
+   () => TUNE.winkDrag, v => TUNE.winkDrag = v],
+];
+
+function settingsHTML() {
+  const sw = (i, on) => `<div class="sw ctl${on ? " on" : ""}" data-t="${i}"></div>`;
+  const sl = (i, c) => {
+    const scale = c[7] || 1, val = Math.round(TUNE[c[2]] * scale);
+    return `<div class="sl"><input class="ctl" type="range" data-s="${i}"
+      min="${c[3]}" max="${c[4]}" step="${c[5]}" value="${val}">
+      <output data-o="${i}">${c[6](val)}</output></div>`;
+  };
+  const row = (nm, hint, ctl) =>
+    `<div class="row"><div><div class="nm">${nm}</div>
+       <div class="hint">${hint}</div></div>${ctl}</div>`;
+  return `<div class="cfg">
+    <h4>Interface</h4>
+    <div class="planes">${MODES.map((M, i) =>
+      `<button class="ctl" data-p="${i}">${M.k}</button>`).join("")}</div>
+    ${CFG_TOGGLES.slice(0, 1).map((t, i) => row(t[0], t[1], sw(0, t[2]()))).join("")}
+    <h4>Colour</h4>
+    <div class="wheel"><div class="wdot"></div></div>
+    <label>Brightness</label>
+    <input class="wlum ctl" type="range" min="70" max="135" value="100">
+    <label>Presets</label><div class="wsw"></div>
+    <div class="wrow"><span class="whex"></span><button class="wrst ctl">RESET</button></div>
+    <h4>Hands</h4>
+    ${CFG_TOGGLES.slice(1, 4).map((t, i) => row(t[0], t[1], sw(i + 1, t[2]()))).join("")}
+    ${[0, 1, 2, 3, 4, 5].map(i => row(CFG_SLIDERS[i][0], CFG_SLIDERS[i][1],
+        sl(i, CFG_SLIDERS[i]))).join("")}
+    <h4>Head</h4>
+    ${row(CFG_TOGGLES[4][0], CFG_TOGGLES[4][1], sw(4, CFG_TOGGLES[4][2]()))}
+    ${[6, 7].map(i => row(CFG_SLIDERS[i][0], CFG_SLIDERS[i][1],
+        sl(i, CFG_SLIDERS[i]))).join("")}
+  </div>`;
+}
+
 function openSettings() {
-  openPanel({ def: { title: "SETTINGS", file: "" } }, [
-    "INPUT PLANES",
-    "  Pick a plane from the buttons, top right. Mouse is on by default.",
-    "",
-    "MOUSE",
-    "  click open · drag move · right-drag rotate · wheel scroll or resize",
-    "  corner-drag resize · right-click (no move) flattens a rotation",
-    "",
-    "HAND",
-    "  one finger out    arrow cursor",
-    "  stop on something it opens (a moving hand selects nothing)",
-    "  press and hold    drag it around",
-    "  two fingers       scroll the pane under the cursor",
-    "  pinch-drag        move · two hands scale · clap clears the board",
-    "",
-    "HEAD  (press H)",
-    "  turn your head    move the cursor",
-    "  one blink open a folder · two blinks open a file",
-    "  wink, move, wink  carry something",
-    "",
-    "COLOUR",
-    "  The wheel, top right, rotates the whole interface.",
-    "",
-    "KEYS   R respawn · C camera · D debug · H head · 1-5 planes",
-  ].join("\n"));
+  const open = items.find(i => i.isCfg && i.el.isConnected);
+  if (open) { killItem(open); return; }
+  const el = document.createElement("div");
+  el.className = "panel";
+  el.innerHTML = `<div class="bar"><h3>SETTINGS</h3></div>` +
+                 `<div class="body"><div class="scroll">${settingsHTML()}</div></div>`;
+  BEHIND.appendChild(el);
+  const p = { el, id: UID++, type: "panel", isCfg: true,
+    def: { title: "SETTINGS", file: "" },
+    x: innerWidth * 0.5, y: innerHeight * 0.48, scale: 1, vx: 0, vy: 0,
+    grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null, scrollY: 0,
+    body: el.querySelector(".scroll") };
+  p.anim = { k: "in", t: 0 }; el.style.opacity = "0.05";
+  items.push(p);
+
+  el.querySelectorAll(".sw").forEach(n => n.addEventListener("click", e => {
+    e.stopPropagation();
+    const t = CFG_TOGGLES[+n.dataset.t];
+    t[3](!t[2]()); n.classList.toggle("on", !!t[2]());
+  }));
+  el.querySelectorAll("input[type=range][data-s]").forEach(n =>
+    n.addEventListener("input", e => {
+      e.stopPropagation();
+      const c = CFG_SLIDERS[+n.dataset.s], scale = c[7] || 1;
+      TUNE[c[2]] = +n.value / scale;
+      const o = el.querySelector(`output[data-o="${n.dataset.s}"]`);
+      if (o) o.textContent = c[6](+n.value);
+    }));
+  el.querySelectorAll("button[data-p]").forEach(n =>
+    n.addEventListener("click", e => {
+      e.stopPropagation(); setMode(+n.dataset.p); syncPlanes(el);
+    }));
+  syncPlanes(el);
+  mountPicker(el.querySelector(".cfg"));
+}
+
+function syncPlanes(el) {
+  let cur = 0;
+  try { cur = +(localStorage.getItem("novros-mode") || 0); } catch {}
+  el.querySelectorAll("button[data-p]").forEach(n =>
+    n.classList.toggle("on", +n.dataset.p === cur));
 }
 
 // ============================================================
@@ -2197,7 +2343,7 @@ const NOV_NAME = "NOVROS";
 // replaces left 90-degree gaps either side of Apps and 45 everywhere
 // else, so the ring read as lopsided.
 const NOV_ORDER = ["apps", "projects", "settings", "games", "demos", "documents"];
-const NOV_TITLES = { apps: "Apps", projects: "Projects", settings: "Settings",
+const NOV_TITLES = { apps: "Widgets", projects: "Projects", settings: "Settings",
                      games: "Games", demos: "Demos", documents: "Documents" };
 const NOV_MENU = NOV_ORDER.map((menu, i) => ({
   title: NOV_TITLES[menu],
@@ -2391,7 +2537,7 @@ function openBrowser(kind, ox, oy) {
   const ex = items.find(i => i.type === "browser" && i.bkind === kind);
   if (ex) { killItem(ex); return; }
   loadTree().then(() => {
-    const label = String(kind === "props" ? "Props" : kind === "apps" ? "Apps"
+    const label = String(kind === "props" ? "Props" : kind === "apps" ? "Widgets"
       : ((CFG.orbs || [])[kind] || {}).title || "Notes").toUpperCase();
     const el = document.createElement("div");
     el.className = "panel browser";
@@ -4487,6 +4633,10 @@ addEventListener("contextmenu", e => { if (mDrag || hitTest({ x: e.clientX, y: e
 
 addEventListener("mousedown", e => {
   if (!INPUT.mouse) return;
+  // A real control inside a panel belongs to the control, not the board:
+  // without this a slider drag grabs the panel and moves it instead.
+  if (e.target.closest && e.target.closest("input,button,select,textarea,.ctl"))
+    return;
   const x = e.clientX, y = e.clientY;
   const c = hitTest({ x, y });
   if (!c) return;
@@ -4631,6 +4781,7 @@ if (ROLE === "render") {
 } else {
   THEME.restore();     // theme and chrome belong to the PAGE, so they come
   buildModes();        // up immediately rather than waiting on a camera
+  loadPrefs();
   runIntro();
   boot().catch(e => {
     document.getElementById("boot").innerHTML =
