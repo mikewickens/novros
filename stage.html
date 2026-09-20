@@ -111,8 +111,21 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     box-shadow:0 8px 40px rgba(0,0,0,0.55),
       0 0 calc(24px + var(--ch)*70px) rgba(var(--c22),calc(0.10 + var(--ch)*0.75)),
       inset 0 1px 0 rgba(var(--c33),0.35); }
-  #cam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-         transform:scaleX(-1); }
+  #cam, #bgfx { position:absolute; inset:0; width:100%; height:100%;
+                object-fit:cover; transform:scaleX(-1); }
+  #bgfx { display:none; z-index:0; }
+  body.bgon #bgfx { display:block; }
+  body.bgon #cam { opacity:0; }   /* still decoding, just not shown */
+  .bgsw { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px; }
+  .bgsw div { position:relative; height:52px; border-radius:9px; cursor:pointer;
+              overflow:hidden; background-size:cover; background-position:center;
+              border:2px solid rgba(var(--c33),0.22); transition:all .15s ease;
+              display:flex; align-items:center; justify-content:center;
+              font:600 9.5px "SF Mono",Menlo,monospace; letter-spacing:0.08em;
+              color:rgba(var(--c39),0.85); text-align:center; }
+  .bgsw div:hover { border-color:rgba(var(--c33),0.6); }
+  .bgsw div.on { border-color:rgb(var(--c22));
+                 box-shadow:0 0 14px rgba(var(--c22),0.55); }
   body.overlay #cam, body.keybg #cam {
          width:2px; height:2px; opacity:0.01; pointer-events:none; }
   /* THE GLASS ERA (2026-08-13, Jared's redesign): clean CLEAR glass —
@@ -512,6 +525,7 @@ setTimeout(function () {
 }, 12000);
 </script>
 <video id="cam" autoplay playsinline muted></video>
+<canvas id="bgfx"></canvas>
 <div id="behind"></div>
 <div id="boot">NOVROS<br><span style="color:rgb(var(--c31));font-size:13px">starting… allow the camera when asked</span></div>
 <!-- the hint bar is gone: the controls are the UI now -->
@@ -535,7 +549,7 @@ setTimeout(function () {
 <div id="toast"></div>
 
 <script type="module">
-import { HandLandmarker, FaceLandmarker, FilesetResolver } from
+import { HandLandmarker, FaceLandmarker, ImageSegmenter, FilesetResolver } from
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 
 // modes: ?mode=mirror (default, self-view) | overlay (transparent — OBS
@@ -1968,6 +1982,180 @@ function buildModes() {
 // INPUT and THEME objects, so a change lands on the very next frame
 // with nothing to apply or save. What is worth keeping is kept.
 // ============================================================
+// ============================================================
+// VIRTUAL BACKGROUNDS
+// ------------------------------------------------------------
+// Person segmentation out of the same MediaPipe bundle the hands and
+// the face already come from, so it costs a model download and nothing
+// else. Off by default and created lazily: a board that never turns it
+// on never pays for it.
+//
+// The composite is deliberately rendered at a reduced width and scaled
+// up by CSS. A background effect does not need 1080 lines, and three
+// full-resolution canvases per frame would cost more than the whole
+// rest of the board.
+// ============================================================
+const BG = {
+  mode: "none",          // none | blur | colour | image
+  src: "", blur: 14, on: false, seg: null, busy: false,
+  cv: null, ctx: null, bgc: null, bgx: null, pc: null, px: null,
+  mc: null, mx: null, img: null, W: 0, H: 0,
+
+  save() {
+    try { localStorage.setItem("novros-bg",
+      JSON.stringify({ m: this.mode, s: this.src, b: this.blur })); } catch {}
+  },
+  restore() {
+    try {
+      const v = JSON.parse(localStorage.getItem("novros-bg") || "null");
+      if (v) { this.blur = v.b ?? 14; if (v.m && v.m !== "none") this.set(v.m, v.s); }
+    } catch {}
+  },
+
+  async set(mode, src) {
+    if (mode !== "none" && !this.seg) {
+      if (!VISION || this.busy) { toast("background needs the tracker running", 1800); return; }
+      this.busy = true; toast("loading the segmenter…", 1800);
+      try {
+        this.seg = await ImageSegmenter.createFromOptions(VISION, {
+          baseOptions: { modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite",
+            delegate: "GPU" },
+          runningMode: "VIDEO", outputCategoryMask: true,
+          outputConfidenceMasks: true });
+      } catch (e) { toast("segmenter failed: " + e.message, 3000); this.busy = false; return; }
+      this.busy = false;
+    }
+    this.mode = mode; this.src = src || "";
+    if (mode === "image" && this.src) {
+      this.img = new Image(); this.img.crossOrigin = "anonymous"; this.img.src = this.src;
+    }
+    this.on = mode !== "none";
+    document.body.classList.toggle("bgon", this.on);
+    this.save();
+    document.querySelectorAll(".bgsw div").forEach(d =>
+      d.classList.toggle("on", d.dataset.m === mode &&
+        (mode !== "image" || d.dataset.src === this.src)));
+  },
+
+  init() {
+    if (this.cv) return;
+    this.cv = document.getElementById("bgfx");
+    this.ctx = this.cv.getContext("2d");
+    const mk = () => document.createElement("canvas");
+    this.bgc = mk(); this.bgx = this.bgc.getContext("2d");
+    this.pc = mk(); this.px = this.pc.getContext("2d");
+    this.mc = mk(); this.mx = this.mc.getContext("2d");
+  },
+
+  render(now) {
+    if (!this.on || !this.seg || !cam.videoWidth) return;
+    this.init();
+    // working resolution: enough for a background, a quarter of the cost
+    const vw = cam.videoWidth, vh = cam.videoHeight;
+    const W = Math.min(960, vw), H = Math.round(vh * (W / vw));
+    if (W !== this.W || H !== this.H) {
+      this.W = W; this.H = H;
+      [this.cv, this.bgc, this.pc].forEach(c => { c.width = W; c.height = H; });
+    }
+    let r; try { r = this.seg.segmentForVideo(cam, now); } catch { return; }
+    const conf = r && r.confidenceMasks && r.confidenceMasks[0];
+    const cat = r && r.categoryMask;
+    const m = conf || cat;
+    if (!m) { if (r && r.close) r.close(); return; }
+    const mw = m.width, mh = m.height;
+    const raw = conf ? m.getAsFloat32Array() : m.getAsUint8Array();
+
+    if (this.mc.width !== mw || this.mc.height !== mh) {
+      this.mc.width = mw; this.mc.height = mh;
+    }
+    const id = this.mx.createImageData(mw, mh);
+    const d = id.data;
+    // The two mask flavours disagree about scale AND about which way
+    // round they are, so normalise rather than trusting either: take the
+    // observed range, and if the frame's centre reads LOW assume the
+    // mask marks background and flip it. A person is in the middle of
+    // their own webcam frame; that is the one safe assumption here.
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < raw.length; k += 7) {
+      const v = raw[k]; if (v < lo) lo = v; if (v > hi) hi = v;
+    }
+    const span = (hi - lo) || 1;
+    // CENTRE versus CORNERS, not centre versus the range: a webcam's four
+    // corners are background essentially always, while the middle is the
+    // person, so the two ends of that comparison are the reliable ones.
+    // Averaged over blocks so one stray pixel cannot decide it.
+    const at = (fx, fy) => {
+      let sum = 0, n = 0;
+      const x0 = Math.floor(mw * fx), y0 = Math.floor(mh * fy);
+      for (let y = y0 - 3; y <= y0 + 3; y++) {
+        if (y < 0 || y >= mh) continue;
+        for (let x = x0 - 3; x <= x0 + 3; x++) {
+          if (x < 0 || x >= mw) continue;
+          sum += raw[y * mw + x]; n++;
+        }
+      }
+      return n ? sum / n : 0;
+    };
+    const centre = (at(0.5, 0.45) + at(0.5, 0.75)) / 2;
+    const corners = (at(0.04, 0.04) + at(0.96, 0.04) +
+                     at(0.04, 0.96) + at(0.96, 0.96)) / 4;
+    const flip = centre < corners;
+    for (let k = 0, j = 3; k < raw.length; k++, j += 4) {
+      let a = (raw[k] - lo) / span;
+      if (flip) a = 1 - a;
+      d[j] = a * 255;
+    }
+    this.mx.putImageData(id, 0, 0);
+    if (r.close) r.close();
+
+    // 1. the background
+    this.bgx.clearRect(0, 0, W, H);
+    if (this.mode === "blur") {
+      this.bgx.filter = `blur(${this.blur}px)`;
+      this.bgx.drawImage(cam, 0, 0, W, H);
+      this.bgx.filter = "none";
+    } else if (this.mode === "image" && this.img && this.img.complete && this.img.naturalWidth) {
+      const ir = this.img.naturalWidth / this.img.naturalHeight, cr = W / H;
+      let dw = W, dh = H;
+      if (ir > cr) dw = H * ir; else dh = W / ir;
+      this.bgx.drawImage(this.img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    } else {
+      const c = getComputedStyle(document.documentElement)
+        .getPropertyValue("--c5").trim() || "3,33,29";
+      this.bgx.fillStyle = `rgb(${c})`; this.bgx.fillRect(0, 0, W, H);
+    }
+
+    // 2. the person, cut out by the mask (scaled up smoothly, which is
+    //    what gives the edge its softness for free)
+    this.px.globalCompositeOperation = "source-over";
+    this.px.clearRect(0, 0, W, H);
+    this.px.drawImage(cam, 0, 0, W, H);
+    this.px.globalCompositeOperation = "destination-in";
+    this.px.imageSmoothingEnabled = true;
+    this.px.drawImage(this.mc, 0, 0, W, H);
+    this.px.globalCompositeOperation = "source-over";
+
+    // 3. composite
+    this.ctx.clearRect(0, 0, W, H);
+    this.ctx.drawImage(this.bgc, 0, 0);
+    this.ctx.drawImage(this.pc, 0, 0);
+  },
+};
+
+// every image the media folder holds, as background options
+function bgImages() {
+  const out = [];
+  const walk = t => {
+    (t.items || []).forEach(f => {
+      if (/\.(png|jpe?g|webp)$/i.test(f)) out.push("/media/" + f);
+    });
+    (t.dirs || []).forEach(walk);
+  };
+  if (PROPSTREE) walk(PROPSTREE);
+  return out.slice(0, 12);
+}
+
 const UIPREF = { modeBar: true };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF;
@@ -2040,6 +2228,21 @@ function settingsHTML() {
     <input class="wlum ctl" type="range" min="70" max="135" value="100">
     <label>Presets</label><div class="wsw"></div>
     <div class="wrow"><span class="whex"></span><button class="wrst ctl">RESET</button></div>
+    <h4>Background</h4>
+    <div class="bgsw ctl">
+      <div data-m="none" class="${BG.mode === "none" ? "on" : ""}">NONE</div>
+      <div data-m="blur" class="${BG.mode === "blur" ? "on" : ""}">BLUR</div>
+      <div data-m="colour" class="${BG.mode === "colour" ? "on" : ""}">COLOUR</div>
+      ${bgImages().map(u => `<div data-m="image" data-src="${escT(u)}"
+        class="${BG.mode === "image" && BG.src === u ? "on" : ""}"
+        style="background-image:url('${escT(u)}')"></div>`).join("")}
+    </div>
+    <div class="row"><div><div class="nm">Blur strength</div>
+      <div class="hint">only applies to the blurred background</div></div>
+      <div class="sl"><input class="ctl" type="range" id="bgblur" min="4" max="40"
+        step="1" value="${BG.blur}"><output id="bgblurv">${BG.blur}px</output></div></div>
+    <div class="hint" style="padding:2px">Drop images into <b>media/</b> and press R
+      to add your own.</div>
     <h4>Hands</h4>
     ${CFG_TOGGLES.slice(1, 4).map((t, i) => row(t[0], t[1], sw(i + 1, t[2]()))).join("")}
     ${[0, 1, 2, 3, 4, 5].map(i => row(CFG_SLIDERS[i][0], CFG_SLIDERS[i][1],
@@ -2084,6 +2287,15 @@ function openSettings() {
     n.addEventListener("click", e => {
       e.stopPropagation(); setMode(+n.dataset.p); syncPlanes(el);
     }));
+  el.querySelectorAll(".bgsw div").forEach(n =>
+    n.addEventListener("click", e => {
+      e.stopPropagation(); BG.set(n.dataset.m, n.dataset.src || "");
+    }));
+  const bb = el.querySelector("#bgblur");
+  if (bb) bb.addEventListener("input", e => {
+    e.stopPropagation(); BG.blur = +bb.value; BG.save();
+    const o = el.querySelector("#bgblurv"); if (o) o.textContent = bb.value + "px";
+  });
   syncPlanes(el);
   mountPicker(el.querySelector(".cfg"));
 }
@@ -3162,6 +3374,7 @@ async function boot() {
   await loadTree();
   spawnStage();
   restoreWidgets();
+  BG.restore();
   let lastT = performance.now();
 
   function frame(now) {
@@ -3170,6 +3383,7 @@ async function boot() {
       lastVideoTs = cam.currentTime;
       const res = landmarker.detectForVideo(cam, now);
       if (HEAD.on) HEAD.update(now);
+      if (BG.on) BG.render(now);
       const seen = new Set();
       (INPUT.hand ? (res.landmarks || []) : []).forEach((lms, i) => {
         seen.add(i);
