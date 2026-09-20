@@ -798,6 +798,9 @@ const TUNE = {
                          // instead of snapping, which is most of what
                          // makes it feel controllable rather than twitchy
   // --- two-finger scroll ---
+  newsPace:      8,      // seconds per headline in the ticker. Paced by
+                         // how many there are, so a long run does not
+                         // become a blur and a short one a crawl.
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
   menuScale:     0.5,    // the CENTRE ring only. The stations around it
@@ -3344,13 +3347,14 @@ function paintWidget(w) {
         <div class="wsm" style="padding:10px 20px 0">fetching headlines\u2026</div>`;
       return;
     }
-    if (w.newsV === NEWSDATA.v) return;      // unchanged: leave the scroll alone
+    // rebuild when the headlines change OR the pace does, so a speed
+    // change lands without waiting for the next refresh
+    const dur = Math.max(120, NEWSDATA.items.length * TUNE.newsPace);
+    if (w.newsV === NEWSDATA.v && w.newsDur === dur) return;
+    w.newsDur = dur;
     w.newsV = NEWSDATA.v;
     const strip = NEWSDATA.items.map(i =>
       `<b>${escT(i.s)}</b>${escT(i.t)}`).join('<i>\u2022</i>');
-    // pace it by length so a long run of headlines is not a blur and a
-    // short one is not a crawl: roughly one headline every four seconds
-    const dur = Math.max(60, NEWSDATA.items.length * 4);
     box.innerHTML = `<div class="wlbl">Live news</div>
       <div class="nwin"><div class="ntrack" style="animation-duration:${dur}s">
         <span>${strip}</span><span>${strip}</span></div></div>`;
