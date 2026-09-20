@@ -777,7 +777,10 @@ const TUNE = {
   headGain:      3.4,    // screen travel per unit of head turn
   headDeadzone:  0.012,  // ignore turns smaller than this, so a still
                          // head gives a still cursor instead of drifting
-  headSmooth:    1.0,    // One Euro min-cutoff for the head cursor
+  headSmooth:    0.55,   // how still the head cursor sits. Lower is
+                         // calmer; a head needs far more smoothing than
+                         // a fingertip, and its turn is amplified.
+  headBeta:      0.008,  // how quickly it gives that up when you move
   blinkScore:    0.5,    // eye-closed confidence from the face model
   blinkOpenMax:  0.25,   // ... and what counts as definitely OPEN
   blinkMinMs:    190,    // shorter than this is an INVOLUNTARY blink and
@@ -825,8 +828,10 @@ const spanU = m => m * SPAN_PX;     // span-relative -> screen pixels
 // smoothing when the hand is nearly still -- which is exactly when a
 // tap's travel budget needs protecting -- and light smoothing when it
 // moves, so drags stay responsive. Standard Casiez/Roussel/Vogel filter.
-function makeEuro() {
+function makeEuro(opt) {
   let xPrev = null, dxPrev = 0, tPrev = 0;
+  const minCut = () => (opt && opt.minCutoff) ? opt.minCutoff() : TUNE.euroMinCutoff;
+  const bta = () => (opt && opt.beta) ? opt.beta() : TUNE.euroBeta;
   const alpha = (cutoff, dt) => {
     const tau = 1 / (2 * Math.PI * cutoff);
     return 1 / (1 + tau / dt);
@@ -838,7 +843,7 @@ function makeEuro() {
     tPrev = t;
     const dx = (x - xPrev) / dt;
     dxPrev = dxPrev + alpha(TUNE.euroDCutoff, dt) * (dx - dxPrev);
-    const cutoff = TUNE.euroMinCutoff + TUNE.euroBeta * Math.abs(dxPrev);
+    const cutoff = minCut() + bta() * Math.abs(dxPrev);
     xPrev = xPrev + alpha(cutoff, dt) * (x - xPrev);
     return xPrev;
   };
@@ -5822,7 +5827,13 @@ const HEAD = {
       headBusy = false;
     }
     this.on = true; this.neutral = null; this.samples = [];
-    this.fx = makeEuro(); this.fy = makeEuro();
+    // A head is not a hand. The hand's filter is deliberately quick to
+    // follow, which is right for a fingertip and wrong for a head --
+    // especially with the turn amplified several times over, which
+    // amplifies the tracker's noise with it. headSmooth existed but was
+    // never read, so the head has been running on the hand's numbers.
+    const opt = { minCutoff: () => TUNE.headSmooth, beta: () => TUNE.headBeta };
+    this.fx = makeEuro(opt); this.fy = makeEuro(opt);
     const cur = getCursor(HEAD_ID);
     cur.isHead = true; cur.el.classList.add("pointing");
     toast("HEAD CONTROL on — look straight ahead to centre", 2200);
@@ -5837,16 +5848,11 @@ const HEAD = {
 
   // one deliberate blink opens a folder, two open a file -- the same
   // single/double split the finger press uses, so the two planes agree
-  click(cur) {
-    const t = performance.now();
-    if (this.pending && t - this.clickT < TUNE.doubleBlinkMs) {
-      clearTimeout(this.pending); this.pending = null; this.clickT = 0;
-      pointDouble(cur); return;
-    }
-    this.clickT = t;
-    this.pending = setTimeout(() => { this.pending = null; pointSingle(cur); },
-                              TUNE.doubleBlinkMs);
-  },
+  // One blink acts, immediately. It used to wait out the double-blink
+  // window before doing anything at all, putting half a second between
+  // the blink and the result -- which reads as broken rather than slow.
+  // Mouse, hand and head all activate on a single press now.
+  click(cur) { pointActivate(cur.x, cur.y, cur); },
 
   update(now) {
     if (!this.on || !faceLm) return;
@@ -5875,7 +5881,13 @@ const HEAD = {
       this.dbg = `head: centring ${this.samples.length}/20`;
       return;
     }
-    const dz = v => Math.abs(v) < TUNE.headDeadzone ? 0 : v;
+    // Subtract the deadzone rather than zeroing inside it. A hard cut
+    // makes the cursor jump the width of the deadzone the instant you
+    // cross it, which reads as a twitch every time you start moving.
+    const dz = v => {
+      const a = Math.abs(v) - TUNE.headDeadzone;
+      return a <= 0 ? 0 : Math.sign(v) * a;
+    };
     // negated: the view is a mirror, so turning right must go right
     const dx = -dz(yaw - this.neutral[0]), dy = dz(pitch - this.neutral[1]);
     const tx = innerWidth / 2 + dx * TUNE.headGain * innerWidth;
