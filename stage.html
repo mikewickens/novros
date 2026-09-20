@@ -417,6 +417,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                    display:none; background:rgba(var(--c27),0.97);
                    clip-path:polygon(0 0, 0 76%, 25% 58%, 43% 97%, 62% 89%, 45% 52%, 77% 49%);
                    filter:drop-shadow(0 2px 5px rgba(0,0,0,0.75)); }
+  /* the system hand is marked, so you can see which hand is which */
+  .cursor.sys { border-color:rgba(var(--c30),0.95); border-width:2px;
+                background:rgba(var(--c30),0.18);
+                box-shadow:0 0 16px rgba(var(--c30),0.6); }
+  .cursor.sys .arrow { display:none; }
   .cursor.pointing { background:none; border:none; box-shadow:none; transform:none; }
   .cursor.pointing .arrow { display:block; }
   /* the dwell ring becomes the hover-to-click charge, drawn around the
@@ -727,6 +732,8 @@ const TUNE = {
   // press most people make. The thumb travels ACROSS the palm, so it
   // reads clearly from any angle, and it reuses `ratio`, the most
   // reliable measurement in the whole tracker.
+  pressBend:     false,  // the finger-bend press. OFF: it latched on
+                         // tracker jitter and would not let go
   pressGap:      0.46,   // thumb-to-index gap, over the hand's own span
   pressRelease:  1.38,   // x pressGap -- how far back out it must come
   pointDipFrac:  0.82,   // the bend test, kept as a second way in: a
@@ -767,6 +774,11 @@ const TUNE = {
   // --- two-finger scroll ---
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
+  // --- the system hand ---
+  systemHand:    true,   // the LEFT hand drives the OS, not a second mouse
+  swapHands:     false,  // set true if your hands come out the wrong way
+                         // round -- handedness is reported against the
+                         // raw camera image, not the mirrored view
   pointGraceMs:  520,    // pointer stays engaged through a click's dip
   pointTapMs:    420,    // max duration of the bend that counts as a click
   doubleMs:      420,    // two clicks inside this = a double click
@@ -3857,6 +3869,88 @@ function hitTest(cur) {
 // froze a pane at whatever it happened to be holding. Grab a pane while
 // it is still blooming in and it stayed permanently skewed, half-scaled
 // and semi-transparent, with nothing to undo it.
+// ============================================================
+// THE SYSTEM HAND
+// ------------------------------------------------------------
+// The right hand is the mouse. The left drives the OS around it, so the
+// two never have to be told apart by what they are doing -- they are
+// doing different jobs entirely.
+//
+//   open palm, held      the ring menu, in or out
+//   thumb pinch, tapped  close the front window
+//   two fingers, held    next input plane
+//
+// Every one is a HELD pose or a tap with a cooldown, never a state the
+// hand can fall into by resting.
+// ============================================================
+function handArches(lms) {
+  const W0 = lms[0];
+  const d = (a, b) => Math.hypot(lms[a].x - lms[b].x, lms[a].y - lms[b].y);
+  const fR = (t, m) => {
+    const md = Math.hypot(lms[m].x - W0.x, lms[m].y - W0.y);
+    return md > 0 ? Math.hypot(lms[t].x - W0.x, lms[t].y - W0.y) / md : 0;
+  };
+  const span = d(0, 9);
+  return { f8: fR(8, 5), f12: fR(12, 9), f16: fR(16, 13), f20: fR(20, 17),
+           gap: span > 0 ? d(4, 8) / span : 1 };
+}
+
+function frontWindow() {
+  const CLOSABLE = ["panel", "browser", "card", "img", "model", "game"];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const c = items[i];
+    if (c.el.isConnected && CLOSABLE.includes(c.type)) return c;
+  }
+  return null;
+}
+
+function systemHand(cur, lms, now) {
+  const a = handArches(lms);
+  const A = TUNE.pointArch;
+  const open = a.f8 > A && a.f12 > A && a.f16 > A && a.f20 > A;
+  const two = a.f8 > A && a.f12 > A &&
+              (Math.min(a.f8, a.f12) - (a.f16 + a.f20) / 2) > TUNE.pointContrast;
+  const pinched = a.gap < (cur.sPinch ? TUNE.pressGap * TUNE.pressRelease
+                                      : TUNE.pressGap);
+  const cool = k => now > (cur.sCool || 0);
+  const fire = ms => { cur.sCool = now + ms; };
+
+  // OPEN PALM, held: the menu
+  if (open && !pinched) {
+    cur.sOpenT = cur.sOpenT || now;
+    if (now - cur.sOpenT > 400 && cool()) {
+      const ring = items.find(i => i.type === "widget" &&
+                                   i.def && i.def.w === "ring" && i.el.isConnected);
+      if (ring) { ringToggle(ring); toast("menu", 900); }
+      fire(1400);
+    }
+  } else cur.sOpenT = 0;
+
+  // TWO FINGERS, held: the next input plane
+  if (two && !open && !pinched) {
+    cur.sTwoT = cur.sTwoT || now;
+    if (now - cur.sTwoT > 600 && cool()) {
+      let i = 0;
+      try { i = +(localStorage.getItem("novros-mode") || 0); } catch {}
+      const n = (i + 1) % MODES.length;
+      setMode(n); toast(MODES[n].k, 1200);
+      fire(1600);
+    }
+  } else cur.sTwoT = 0;
+
+  // THUMB PINCH, tapped: close the front window
+  if (pinched && !cur.sPinch) { cur.sPinch = true; cur.sPinchT = now; }
+  else if (!pinched && cur.sPinch) {
+    cur.sPinch = false;
+    if (now - (cur.sPinchT || 0) < 550 && cool()) {
+      const w = frontWindow();
+      if (w) { killItem(w); toast("closed", 800); fire(700); }
+    }
+  }
+  cur.sysDbg = `SYS ${open ? "OPEN" : two ? "TWO" : pinched ? "PINCH" : "-"}` +
+               ` gap ${a.gap.toFixed(2)}`;
+}
+
 function settleAnim(c) {
   const a = c.anim;
   if (!a) return;
@@ -4285,6 +4379,21 @@ async function boot() {
         // it tracks both screen size and how far away the hand is.
         const spx = Math.hypot(_w.x - _m.x, _w.y - _m.y);
         if (spx > 8) { cur.spanPx = spx; SPAN_PX += (spx - SPAN_PX) * 0.1; }
+        // Which hand is this? Handedness rides alongside the landmarks
+        // and has simply never been read. Everything above this point is
+        // shared -- the clap still needs both hands' geometry -- so the
+        // split happens here, after it and before the mouse logic.
+        const hcat = res.handedness && res.handedness[i] && res.handedness[i][0];
+        let isLeft = hcat ? hcat.categoryName === "Left" : false;
+        if (TUNE.swapHands) isLeft = !isLeft;
+        cur.isLeft = isLeft;
+        cur.el.classList.toggle("sys", isLeft && TUNE.systemHand);
+        if (isLeft && TUNE.systemHand) {
+          cur.x = cur.fx(tip.x, now); cur.y = cur.fy(tip.y, now);
+          cur.el.style.left = cur.x + "px"; cur.el.style.top = cur.y + "px";
+          systemHand(cur, lms, now);
+          return;                       // no pointer, no buttons, no grab
+        }
         const gap = Math.hypot(lms[4].x - lms[8].x, lms[4].y - lms[8].y);
         const ratio = span > 0 ? gap / span : 1;
         const px = (tip.x + thumb.x) / 2, py = (tip.y + thumb.y) / 2;
@@ -4521,8 +4630,18 @@ async function boot() {
           const thumbIn = cur.ptBent
             ? ratio < TUNE.pressGap * TUNE.pressRelease
             : ratio < TUNE.pressGap;
-          const bendIn = cur.ptBent ? f8v < recBar
-                                    : (f8v < dipBar || f8v < TUNE.pointDip);
+          // THE BEND TEST LATCHES, so it is off by default. ptPeak
+          // adopts a new maximum instantly and decays at 1% a frame, so
+          // it sits at the top of the tracker's jitter. Release wanted
+          // f8v to climb back above 0.92 x that peak -- and ordinary
+          // jitter is wider than 8%, so the press could re-trigger on
+          // noise every few frames and never let go. That is why windows
+          // kept dragging with no way to stop them.
+          //
+          // The thumb is the button. It is one measurement, it reads at
+          // any angle, and it releases the instant the thumb opens.
+          const bendIn = TUNE.pressBend && (cur.ptBent
+            ? f8v < recBar : (f8v < dipBar || f8v < TUNE.pointDip));
           const bent = thumbIn || bendIn;
           if (bent && !cur.ptBent) { cur.ptBent = true; cur.ptDipT = now; }
           else if (!bent && cur.ptBent) {
@@ -4595,6 +4714,13 @@ async function boot() {
               }
               cur.ptDrag = tgt;
             } else cur.ptDrag = tgt ? null : "none";
+          }
+          // A FLAT PALM ALWAYS LETS GO. Whatever the button logic
+          // thinks, an open hand means put it down -- so there is always
+          // a way out that needs no reading of thresholds.
+          if (cur.ptDrag && f12v > TUNE.pointArch && f16v > TUNE.pointArch) {
+            if (cur.ptDrag !== "none") endGrab(cur.ptDrag, i, cur);
+            cur.ptDrag = null; cur.ptBent = false;
           }
           if (!cur.ptBent && cur.ptDrag) {              // straighten = drop
             if (cur.ptDrag !== "none") endGrab(cur.ptDrag, i, cur);
@@ -5154,7 +5280,7 @@ async function boot() {
           dbg.textContent = `mode ${MODE}\nfps ${fps}\nhands ${res.landmarks.length}` +
             `\npinch ${ratio.toFixed(2)} ${cur.pinched ? "CLOSED" : "open"}` +
             `\npalm ${cur.palmOpen ? "OPEN" : "-"}${cur.fpSplay ? " CLAW" : ""} pull ph${cur.fp ? cur.fp.ph : 0}` +
-            `\n${cur.ptDbg || ""}` +
+            `\n${cur.sysDbg || cur.ptDbg || ""}` +
             (HEAD.on ? `\n${HEAD.dbg || ""}` : "") +
             `\n${cur.fpDbg || ""}` + (SAMPLED ? `\n${SAMPLED}` : "");
       });
