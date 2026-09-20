@@ -471,6 +471,12 @@ function pointClick(cur) {
 // One shared tap test, replacing four divergent copies (300ms/26px and
 // 350ms/24px) that had drifted apart across versions.
 function isTap(cur, c) {
+  // THE MOUSE OPTS OUT. endGrab() runs these tap tests for a HAND; the
+  // mouse layer decides its own clicks in mouseup, by whether the
+  // pointer travelled. Without this both paths fired, so every mouse
+  // click ran its action twice -- which is why a folder row appeared
+  // dead: browserTap expanded it and then immediately collapsed it.
+  if (cur.isMouse) return false;
   const ms = performance.now() - (cur.grabT || 0);
   const trav = Math.hypot(cur.x - (c.tapX ?? cur.x), cur.y - (c.tapY ?? cur.y));
   return ms < TUNE.tapMs && trav < spanU(TUNE.tapTravel);
@@ -3338,6 +3344,7 @@ let mDrag = null;                // the active mouse interaction
 
 function mouseCursor(x, y) {
   const cur = getCursor(MOUSE_ID);
+  cur.isMouse = true;
   cur.el.style.display = "none";  // the OS pointer is the visible cursor
   cur.x = x; cur.y = y;
   return cur;
@@ -3359,6 +3366,7 @@ function scrollBy(c, dy) {
 }
 // The click outcome, mirroring what a hand TAP does to each item type.
 function mouseTap(c, cur) {
+  if (!c.el || !c.el.isConnected) return;
   if (c.type === "browser") return browserTap(c, cur);
   if (c.type === "orb")     return openBrowser(c.def.orb, c.x, c.y);
   if (c.type === "widget" && c.def.w === "ring") {
