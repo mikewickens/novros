@@ -23,49 +23,94 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 <meta charset="utf-8">
 <title>barehands</title>
 <style>
+:root {
+  --c0: 0,229,255;
+  --c2: 2,10,10;
+  --c3: 2,14,12;
+  --c4: 3,18,16;
+  --c5: 3,33,29;
+  --c6: 4,25,28;
+  --c7: 4,26,24;
+  --c8: 5,34,39;
+  --c9: 10,40,36;
+  --c10: 14,40,36;
+  --c11: 16,44,40;
+  --c12: 18,48,44;
+  --c13: 18,60,54;
+  --c14: 20,72,79;
+  --c15: 30,70,64;
+  --c16: 52,108,100;
+  --c17: 58,116,108;
+  --c18: 60,120,112;
+  --c19: 70,140,130;
+  --c20: 107,156,150;
+  --c21: 111,227,201;
+  --c22: 111,229,214;
+  --c23: 127,179,171;
+  --c24: 140,225,212;
+  --c25: 140,240,225;
+  --c26: 143,240,228;
+  --c27: 150,255,236;
+  --c28: 159,240,221;
+  --c29: 160,240,226;
+  --c30: 160,255,240;
+  --c31: 168,216,207;
+  --c32: 180,255,245;
+  --c33: 191,255,245;
+  --c34: 200,245,236;
+  --c35: 210,255,248;
+  --c36: 220,245,238;
+  --c37: 223,243,238;
+  --c38: 228,250,252;
+  --c39: 230,255,240;
+  --c40: 234,255,251;
+  --c41: 235,250,250;
+  --c42: 236,255,250;
+}
+
   html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden;
                background:#000; font-family:-apple-system,"SF Pro Display",sans-serif; }
   body.overlay { background:transparent; }
   body.keybg { /* background color set by JS from ?key= (default magenta) */ }
   /* green-key fallback: the UI can't be green on a green key (learned live
      2026-08-07 — the cursor got keyed out of existence). Cyan takes over. */
-  body.ui-cyan .cursor { border-color:rgba(0,229,255,0.9); background:rgba(0,229,255,0.12); }
-  body.ui-cyan .cursor.pinched { background:rgba(0,229,255,0.85); box-shadow:0 0 18px rgba(0,229,255,0.8); }
-  body.ui-cyan .cursor .dwell { background:conic-gradient(#00e5ff calc(var(--p)*360deg), transparent 0); }
-  body.ui-cyan .card, body.ui-cyan .panel { border-color:rgba(0,229,255,0.5); }
+  body.ui-cyan .cursor { border-color:rgba(var(--c0),0.9); background:rgba(var(--c0),0.12); }
+  body.ui-cyan .cursor.pinched { background:rgba(var(--c0),0.85); box-shadow:0 0 18px rgba(var(--c0),0.8); }
+  body.ui-cyan .cursor .dwell { background:conic-gradient(rgb(var(--c0)) calc(var(--p)*360deg), transparent 0); }
+  body.ui-cyan .card, body.ui-cyan .panel { border-color:rgba(var(--c0),0.5); }
   body.ui-cyan .card h3, body.ui-cyan .panel .bar h3, body.ui-cyan .panel .close
-    { color:#00e5ff; border-color:rgba(0,229,255,0.6); }
-  body.ui-cyan .scroll .h { color:#00e5ff; }
+    { color:rgb(var(--c0)); border-color:rgba(var(--c0),0.6); }
+  body.ui-cyan .scroll .h { color:rgb(var(--c0)); }
   #toast { position:absolute; top:14px; right:14px; z-index:998; display:none;
-           background:rgba(0,0,0,0.7); color:#8ff0e4; padding:8px 14px;
+           background:rgba(0,0,0,0.7); color:rgb(var(--c26)); padding:8px 14px;
            border-radius:8px; font:13px "SF Mono",Menlo,monospace; }
   /* the squeeze-hold charge glow, visible on the TRACKER too (the render
      page has its own on-air rule): pinch + hold still = charge = open/close */
   .card, .panel { --ch:0; }
   body:not(.on-air) .card.grabbed, body:not(.on-air) .panel.grabbed {
     box-shadow:0 12px 60px rgba(0,0,0,0.7),
-      0 0 calc(44px + var(--ch)*70px) rgba(111,229,214,calc(0.35 + var(--ch)*0.55)); }
+      0 0 calc(44px + var(--ch)*70px) rgba(var(--c22),calc(0.35 + var(--ch)*0.55)); }
   /* THE PRESENT spotlight: one item center stage, the rest step back */
   .dimmed { opacity:0.22 !important; filter:saturate(0.35);
     transition:opacity 0.35s, filter 0.35s; }
   .presented { box-shadow:0 16px 70px rgba(0,0,0,0.65),
-      0 0 70px rgba(111,229,214,0.45); }
+      0 0 70px rgba(var(--c22),0.45); }
   /* ON-AIR (the OBS render page): backdrop-blur has nothing to sample
      in the compositor. GLASS ERA: the near-solid slabs died (Jared's
      8/13 call — "frankly more transparent") — true translucent glass,
      readability carried by the halo text-shadows below. */
-  body.on-air .panel { background:linear-gradient(160deg, rgba(58,116,108,0.42), rgba(16,44,40,0.34)); backdrop-filter:none; }
-  body.on-air .card  { background:linear-gradient(160deg, rgba(60,120,112,0.38), rgba(18,48,44,0.30)); backdrop-filter:none; }
+  body.on-air .panel { background:linear-gradient(160deg, rgba(var(--c17),0.42), rgba(var(--c11),0.34)); backdrop-filter:none; }
+  body.on-air .card  { background:linear-gradient(160deg, rgba(var(--c18),0.38), rgba(var(--c12),0.30)); backdrop-filter:none; }
   body.on-air .card p, body.on-air .panel .scroll {
-    text-shadow:0 1px 3px rgba(2,14,12,0.95), 0 0 10px rgba(2,14,12,0.85); }
+    text-shadow:0 1px 3px rgba(var(--c3),0.95), 0 0 10px rgba(var(--c3),0.85); }
   body.on-air .card h3, body.on-air .panel .bar h3 {
-    text-shadow:0 1px 3px rgba(2,14,12,0.95), 0 0 14px rgba(111,229,214,0.55); }
+    text-shadow:0 1px 3px rgba(var(--c3),0.95), 0 0 14px rgba(var(--c22),0.55); }
   /* the dwell CHARGE glow — the card announces it's about to open (the
      audience's cue once the cursor rings are hidden) */
   body.on-air .card, body.on-air .panel { --ch:0;
     box-shadow:0 8px 40px rgba(0,0,0,0.55),
-      0 0 calc(24px + var(--ch)*70px) rgba(111,229,214,calc(0.10 + var(--ch)*0.75)),
-      inset 0 1px 0 rgba(191,255,245,0.35); }
+      0 0 calc(24px + var(--ch)*70px) rgba(var(--c22),calc(0.10 + var(--ch)*0.75)),
+      inset 0 1px 0 rgba(var(--c33),0.35); }
   #cam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
          transform:scaleX(-1); }
   body.overlay #cam, body.keybg #cam {
@@ -75,16 +120,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
      edge, a specular kiss on top. No wireframe chrome; restraint IS
      the aesthetic. Readability rides halo text, not slab fills. */
   .card { position:absolute; width:480px; padding:22px 24px; border-radius:16px;
-          background:linear-gradient(168deg, rgba(70,140,130,0.30), rgba(18,48,44,0.18));
-          border:1.5px solid rgba(140,240,225,0.55);
-          box-shadow:0 10px 44px rgba(0,0,0,0.40), 0 0 26px rgba(111,229,214,0.14),
-                     inset 0 1px 0 rgba(210,255,248,0.55),
-                     inset 0 -14px 30px rgba(111,229,214,0.05);
-          color:#ecfffa; user-select:none; will-change:transform;
+          background:linear-gradient(168deg, rgba(var(--c19),0.30), rgba(var(--c12),0.18));
+          border:1.5px solid rgba(var(--c25),0.55);
+          box-shadow:0 10px 44px rgba(0,0,0,0.40), 0 0 26px rgba(var(--c22),0.14),
+                     inset 0 1px 0 rgba(var(--c35),0.55),
+                     inset 0 -14px 30px rgba(var(--c22),0.05);
+          color:rgb(var(--c42)); user-select:none; will-change:transform;
           transform-origin:center center; }
   body.keybg .card, body.keybg .panel { backdrop-filter:none;
-          background:rgba(30,70,64,0.97); }
-  .card h3 { margin:0 0 8px; font-size:19px; letter-spacing:0.08em; color:#8ff0e4;
+          background:rgba(var(--c15),0.97); }
+  .card h3 { margin:0 0 8px; font-size:19px; letter-spacing:0.08em; color:rgb(var(--c26));
              font-family:"SF Mono",Menlo,monospace; text-transform:uppercase; }
   /* THE RING (naked canvas, the modelcard pattern) + THE ORBITAL
      BLOOM orbs: the ring is the hub — tap it and your configured
@@ -103,11 +148,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       display:flex; flex-direction:column; align-items:center;
       justify-content:center; text-align:center; gap:2px; }
   .card.orb h3 { margin:0; font-size:16px; }
-  .card.orb p { font-size:11.5px; color:#a8d8cf; margin:0; }
+  .card.orb p { font-size:11.5px; color:rgb(var(--c31)); margin:0; }
   .card.imgcard { padding:6px; width:auto; overflow:hidden;
-      border-color:rgba(111,229,214,0.5);
-      box-shadow:0 8px 40px rgba(0,0,0,0.55), 0 0 30px rgba(111,229,214,0.20),
-                 inset 0 1px 0 rgba(191,255,245,0.35); }
+      border-color:rgba(var(--c22),0.5);
+      box-shadow:0 8px 40px rgba(0,0,0,0.55), 0 0 30px rgba(var(--c22),0.20),
+                 inset 0 1px 0 rgba(var(--c33),0.35); }
   .card.imgcard img { display:block; max-width:32vw; max-height:44vh;
                       border-radius:10px; pointer-events:none; }
   /* MATERIALIZE-AS-LIGHT (Jared's call 8/9): images ARRIVE as hologram
@@ -117,10 +162,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .card.imgcard img, .card.imgcard video { transition:filter 0.5s ease-out; }
   .card.imgcard.mat img, .card.imgcard.mat video {
       filter:brightness(1.55) saturate(0.2) sepia(1) hue-rotate(115deg)
-             saturate(2.4) drop-shadow(0 0 22px rgba(111,229,214,0.85)); }
+             saturate(2.4) drop-shadow(0 0 22px rgba(var(--c22),0.85)); }
   .card.imgcard.mat::after { content:""; position:absolute; left:0; right:0;
       height:16%; top:-20%; background:linear-gradient(180deg, transparent,
-      rgba(191,255,245,0.75), transparent);
+      rgba(var(--c33),0.75), transparent);
       animation:matscan 0.6s linear; pointer-events:none; }
   @keyframes matscan { from { top:-20%; } to { top:110%; } }
   /* THE FX LAYER (2026-08-08, Jared's idea: "throw me a fireball") —
@@ -174,11 +219,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
      zones. */
   .panel.browser { width:560px; height:720px; }
   .brow { display:flex; align-items:center; gap:12px; min-height:68px;
-          border-bottom:1px solid rgba(111,229,214,0.12); font-size:18px; }
-  .brow .bico { color:#8ff0e4; width:28px; text-align:center; flex:none;
+          border-bottom:1px solid rgba(var(--c22),0.12); font-size:18px; }
+  .brow .bico { color:rgb(var(--c26)); width:28px; text-align:center; flex:none;
                 font-size:20px; }
-  .brow.dir .btxt { color:#8ff0e4; font-weight:600; letter-spacing:0.02em; }
-  .brow.note .btxt, .brow.prop .btxt, .brow.widget .btxt { color:#ecfffa; }
+  .brow.dir .btxt { color:rgb(var(--c26)); font-weight:600; letter-spacing:0.02em; }
+  .brow.note .btxt, .brow.prop .btxt, .brow.widget .btxt { color:rgb(var(--c42)); }
   .brow .btxt { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* THE TAP FLASH (2026-08-13, the mirror-doctrine softener): the row
      you tap pulses full-width on BOTH pages. Rows span the pane and
@@ -187,49 +232,76 @@ SPDX-License-Identifier: AGPL-3.0-or-later
      (the mirror doctrine). Also plain good feedback. */
   .brow.flash { animation:rowflash 0.6s ease-out; }
   @keyframes rowflash {
-    from { background:rgba(140,240,225,0.4); }
+    from { background:rgba(var(--c25),0.4); }
     to   { background:transparent; } }
-  .card p  { margin:0; font-size:17px; line-height:1.45; color:#dcf5ee; text-shadow:0 1px 3px rgba(3,18,16,0.55); }
+  .card p  { margin:0; font-size:17px; line-height:1.45; color:rgb(var(--c36)); text-shadow:0 1px 3px rgba(var(--c4),0.55); }
   .card p:empty { display:none; }
-  .card.grabbed, .panel.grabbed { border-color:#8ff0e4;
-          box-shadow:0 12px 60px rgba(0,0,0,0.7), 0 0 44px rgba(111,229,214,0.35); }
+  .card.grabbed, .panel.grabbed { border-color:rgb(var(--c26));
+          box-shadow:0 12px 60px rgba(0,0,0,0.7), 0 0 44px rgba(var(--c22),0.35); }
   /* v20.4: FIXED px (the 44vw×70vh of a 1920×1080 OBS canvas) so tracker
      and render wrap text identically — same content height on both sides
      makes the fractional scroll a true 1:1 (hand speed = on-air speed) */
   .panel { position:absolute; width:845px; height:756px; border-radius:18px;
-           background:linear-gradient(172deg, rgba(52,108,100,0.36), rgba(14,40,36,0.24));
-           border:1.5px solid rgba(140,240,225,0.6); color:#ecfffa;
-           box-shadow:0 16px 70px rgba(0,0,0,0.5), 0 0 50px rgba(111,229,214,0.16),
-                      inset 0 1px 0 rgba(210,255,248,0.55);
+           background:linear-gradient(172deg, rgba(var(--c16),0.36), rgba(var(--c10),0.24));
+           border:1.5px solid rgba(var(--c25),0.6); color:rgb(var(--c42));
+           box-shadow:0 16px 70px rgba(0,0,0,0.5), 0 0 50px rgba(var(--c22),0.16),
+                      inset 0 1px 0 rgba(var(--c35),0.55);
            display:flex; flex-direction:column; will-change:transform; }
-  .panel .bar { padding:42px 16px; border-bottom:1px solid rgba(111,229,214,0.3);   /* v3.8: THE GRIP BAR everywhere — notes + folders (grab = move, tap = close) */
+  .panel .bar { padding:42px 16px; border-bottom:1px solid rgba(var(--c22),0.3);   /* v3.8: THE GRIP BAR everywhere — notes + folders (grab = move, tap = close) */
                 display:flex; justify-content:space-between; align-items:center; }
-  .panel .bar h3 { margin:0; font-size:14px; color:#8ff0e4; letter-spacing:0.08em;
+  .panel .bar h3 { margin:0; font-size:14px; color:rgb(var(--c26)); letter-spacing:0.08em;
                    font-family:"SF Mono",Menlo,monospace; text-transform:uppercase; }
   .panel .close { width:30px; height:30px; border-radius:50%; text-align:center;
-                  line-height:28px; border:1.5px solid rgba(111,229,214,0.65);
-                  color:#8ff0e4; font-size:15px; }
+                  line-height:28px; border:1.5px solid rgba(var(--c22),0.65);
+                  color:rgb(var(--c26)); font-size:15px; }
   .panel .body { flex:1; overflow:hidden; padding:14px 20px; }
-  .panel .scroll { transition:none; font-size:14.5px; line-height:1.5; color:#dcf5ee; text-shadow:0 1px 3px rgba(3,18,16,0.55);
+  .panel .scroll { transition:none; font-size:14.5px; line-height:1.5; color:rgb(var(--c36)); text-shadow:0 1px 3px rgba(var(--c4),0.55);
                    white-space:pre-wrap; font-family:-apple-system,sans-serif; }
-  .panel .scroll b { color:#fff; } .panel .scroll .h { color:#8ff0e4; font-weight:700; }
+  .panel .scroll b { color:#fff; } .panel .scroll .h { color:rgb(var(--c26)); font-weight:700; }
   /* NOVROS: the resize corner announces itself on hover, so the grip is
      discoverable instead of being a secret 26px square. */
   .card.gripping::after, .panel.gripping::after {
     content:""; position:absolute; right:4px; bottom:4px; width:17px; height:17px;
-    border-right:2.5px solid rgba(150,255,236,0.95);
-    border-bottom:2.5px solid rgba(150,255,236,0.95);
+    border-right:2.5px solid rgba(var(--c27),0.95);
+    border-bottom:2.5px solid rgba(var(--c27),0.95);
     border-bottom-right-radius:5px; pointer-events:none;
     filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); }
+  /* ---------- NOVROS WIDGETS ---------- */
+  .card.wdg { width:auto; padding:0; border-radius:22px; overflow:hidden;
+              background:linear-gradient(165deg, rgba(var(--c30),0.34), rgba(var(--c5),0.26));
+              border:1.5px solid rgba(var(--c33),0.42);
+              box-shadow:0 14px 48px rgba(0,0,0,0.45), 0 0 30px rgba(var(--c33),0.14); }
+  .card.wdg .win { padding:18px 20px; }
+  .wdg .wlbl { font:600 10.5px "SF Mono",Menlo,monospace; letter-spacing:0.16em;
+               color:rgba(var(--c39),0.72); text-transform:uppercase; }
+  .wdg .wbig { font:300 62px -apple-system,"SF Pro Display",sans-serif; line-height:1;
+               color:rgb(var(--c41)); letter-spacing:-0.02em;
+               text-shadow:0 2px 14px rgba(0,0,0,0.5); }
+  .wdg .wmid { font:600 17px -apple-system,sans-serif; color:rgba(var(--c41),0.95); }
+  .wdg .wsm  { font:500 12.5px -apple-system,sans-serif; color:rgba(var(--c39),0.8); }
+  .wdg .strip { display:flex; gap:14px; margin-top:14px; padding-top:13px;
+                border-top:1px solid rgba(var(--c33),0.22); }
+  .wdg .strip div { text-align:center; flex:1; }
+  .wdg .strip .h { font:600 11px "SF Mono",Menlo,monospace;
+                   color:rgba(var(--c39),0.62); }
+  .wdg .strip .t { font:600 14px -apple-system,sans-serif;
+                   color:rgba(var(--c41),0.94); margin-top:5px; }
+  .wdg canvas { display:block; }
+  .card.wdg.clockw, .card.wdg.datew { width:200px; }
+  .card.wdg.weatherw { width:362px; }
+  .wdg .dnum { font:200 78px -apple-system,"SF Pro Display",sans-serif; line-height:0.92;
+               color:rgb(var(--c41)); letter-spacing:-0.04em; }
+  .wdg .dday { font:700 21px -apple-system,sans-serif; color:rgb(var(--c33)); }
+  .wdg .dmon { font:700 21px -apple-system,sans-serif; color:rgba(var(--c39),0.85); }
   .cursor { position:absolute; width:28px; height:28px; margin:-14px 0 0 -14px;
-            border-radius:50%; border:2.5px solid rgba(111,229,214,0.9);
-            background:rgba(111,229,214,0.12); pointer-events:none; z-index:999; }
-  .cursor.pinched { background:rgba(111,229,214,0.85); transform:scale(0.62);
-                    box-shadow:0 0 18px rgba(111,229,214,0.8); }
+            border-radius:50%; border:2.5px solid rgba(var(--c22),0.9);
+            background:rgba(var(--c22),0.12); pointer-events:none; z-index:999; }
+  .cursor.pinched { background:rgba(var(--c22),0.85); transform:scale(0.62);
+                    box-shadow:0 0 18px rgba(var(--c22),0.8); }
   /* NOVROS POINTER: index-finger pointing turns the ring into a real
      OS arrow, anchored at its tip so the point sits on your fingertip. */
   .cursor .arrow { position:absolute; left:-2px; top:-2px; width:23px; height:31px;
-                   display:none; background:rgba(150,255,236,0.97);
+                   display:none; background:rgba(var(--c27),0.97);
                    clip-path:polygon(0 0, 0 76%, 25% 58%, 43% 97%, 62% 89%, 45% 52%, 77% 49%);
                    filter:drop-shadow(0 2px 5px rgba(0,0,0,0.75)); }
   .cursor.pointing { background:none; border:none; box-shadow:none; transform:none; }
@@ -239,15 +311,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .cursor.pointing .dwell { display:block; inset:-12px; opacity:0.9; }
   .cursor.clicking .arrow { background:#ffffff; transform:scale(0.86); }
   .cursor .dwell { position:absolute; inset:-7px; border-radius:50%;
-                   background:conic-gradient(#8ff0e4 calc(var(--p)*360deg), transparent 0);
+                   background:conic-gradient(rgb(var(--c26)) calc(var(--p)*360deg), transparent 0);
                    -webkit-mask:radial-gradient(circle, transparent 58%, black 60%);
                    opacity:0.95; }
   #hint { position:absolute; bottom:14px; left:0; right:0; text-align:center;
-          color:rgba(230,255,240,0.7); font-size:13.5px; z-index:998;
+          color:rgba(var(--c39),0.7); font-size:13.5px; z-index:998;
           text-shadow:0 1px 6px rgba(0,0,0,0.8); }
   body.overlay #hint, body.greenkey #hint { display:none; }
   #debug { position:absolute; top:12px; left:12px; z-index:998; display:none;
-           background:rgba(0,0,0,0.65); color:#8ff0e4; padding:10px 12px;
+           background:rgba(0,0,0,0.65); color:rgb(var(--c26)); padding:10px 12px;
            border-radius:8px; font:12px "SF Mono",Menlo,monospace; white-space:pre; }
   /* GLASS ERA: the item layer is a real 3D SPACE — every card, panel,
      and widget can rotate in Z (hold-latch); default pose is flat.
@@ -257,8 +329,52 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   #behind { position:fixed; inset:0; z-index:1; perspective:1200px; }
   /* (an earlier whole-screen voice-pulse border was removed —
      THE RING is the assistant's presence now.) */
+  /* ---------- NOVROS INTRO ---------- */
+  #intro { position:fixed; inset:0; z-index:2000; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; pointer-events:none;
+           background:radial-gradient(ellipse at center, rgba(var(--c7),0.82) 0%, rgba(var(--c2),0.96) 70%);
+           opacity:1; transition:opacity 0.9s ease; }
+  #intro.gone { opacity:0; }
+  #intro .rings { position:absolute; width:min(74vmin,620px); height:min(74vmin,620px);
+                  border-radius:50%; border:1.5px solid rgba(var(--c22),0.35);
+                  animation:introPulse 2.6s cubic-bezier(.16,.8,.3,1) forwards; }
+  #intro .rings:nth-child(2) { animation-delay:0.18s; }
+  #intro .rings:nth-child(3) { animation-delay:0.36s; }
+  @keyframes introPulse { 0% { transform:scale(0.18); opacity:0; }
+                          35% { opacity:0.85; } 100% { transform:scale(1.25); opacity:0; } }
+  #intro .wel { font:600 clamp(11px,1.5vmin,15px) "SF Mono",Menlo,monospace;
+                letter-spacing:0.62em; color:rgba(var(--c29),0.9); margin-bottom:22px;
+                opacity:0; animation:introUp 0.9s ease 0.35s forwards; text-indent:0.62em; }
+  #intro .nov { display:flex; gap:clamp(4px,1.1vmin,12px); }
+  #intro .nov span { font:700 clamp(34px,10vmin,104px) "SF Mono",Menlo,monospace;
+                     color:rgb(var(--c40)); opacity:0; transform:translateY(0.32em) scale(0.82);
+                     text-shadow:0 0 34px rgba(var(--c22),0.75), 0 2px 10px rgba(0,0,0,0.8);
+                     animation:introChar 0.72s cubic-bezier(.16,1.1,.3,1) forwards; }
+  #intro .sweep { position:absolute; width:min(90vmin,760px); height:2px;
+                  background:linear-gradient(90deg, transparent, rgba(var(--c30),0.95), transparent);
+                  opacity:0; animation:introSweep 1.5s ease 0.5s forwards; }
+  #intro .sub { margin-top:26px; font:500 clamp(9px,1.25vmin,13px) "SF Mono",Menlo,monospace;
+                letter-spacing:0.38em; color:rgba(var(--c24),0.72); opacity:0;
+                animation:introUp 0.8s ease 1.5s forwards; text-indent:0.38em; }
+  @keyframes introChar { to { opacity:1; transform:translateY(0) scale(1); } }
+  @keyframes introUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+  @keyframes introSweep { 0% { opacity:0; transform:scaleX(0.1); }
+                          45% { opacity:1; } 100% { opacity:0; transform:scaleX(1); } }
+  /* ---------- INPUT MODE BAR ---------- */
+  #modes { position:fixed; top:14px; right:14px; z-index:1500; display:flex; gap:7px;
+           font:600 10.5px "SF Mono",Menlo,monospace; letter-spacing:0.09em; }
+  #modes button { pointer-events:auto; cursor:pointer; padding:7px 11px; border-radius:9px;
+                  color:rgba(var(--c34),0.78); background:rgba(var(--c9),0.55);
+                  border:1px solid rgba(var(--c22),0.3); backdrop-filter:blur(9px);
+                  -webkit-backdrop-filter:blur(9px); transition:all 0.16s ease; }
+  #modes button:hover { color:rgb(var(--c40)); border-color:rgba(var(--c22),0.7);
+                        background:rgba(var(--c13),0.7); }
+  #modes button.on { color:rgb(var(--c5)); background:rgba(var(--c25),0.92);
+                     border-color:rgba(var(--c32),0.95);
+                     box-shadow:0 0 18px rgba(var(--c22),0.5); }
+  body.overlay #modes, body.overlay #intro { display:none; }
   #boot { position:absolute; inset:0; display:flex; align-items:center;
-          justify-content:center; color:#8ff0e4; text-align:center;
+          justify-content:center; color:rgb(var(--c26)); text-align:center;
           font:16px "SF Mono",Menlo,monospace; z-index:1000; background:#000;
           flex-direction:column; gap:12px; }
 </style>
@@ -278,19 +394,19 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 <script>
 if (location.protocol === "file:") {
   document.documentElement.innerHTML =
-    '<body style="margin:0;background:#04191c;color:#dff3ee;font:15px/1.65 ui-monospace,Menlo,monospace;' +
+    '<body style="margin:0;background:rgb(var(--c6));color:rgb(var(--c37));font:15px/1.65 ui-monospace,Menlo,monospace;' +
     'display:flex;align-items:center;justify-content:center;height:100vh;padding:24px;text-align:left">' +
     '<div style="max-width:620px">' +
-    '<div style="font-size:22px;letter-spacing:.18em;color:#6fe3c9;margin-bottom:18px">BAREHANDS NEEDS ITS SERVER</div>' +
+    '<div style="font-size:22px;letter-spacing:.18em;color:rgb(var(--c21));margin-bottom:18px">BAREHANDS NEEDS ITS SERVER</div>' +
     '<p>You opened this file directly, so there is no server behind it. The camera and the gestures will still work, ' +
     'but nothing will ever <b>open</b>: tapping a card asks the server for the file, and there is nothing to ask.</p>' +
     '<p style="margin-top:16px">Start it from the barehands folder:</p>' +
-    '<pre style="background:#052227;border:1px solid #14484f;padding:12px 14px;border-radius:8px;color:#9ff0dd">' +
-    'python3 server.py      <span style="color:#6b9c96"># Windows: python server.py</span></pre>' +
+    '<pre style="background:rgb(var(--c8));border:1px solid rgb(var(--c14));padding:12px 14px;border-radius:8px;color:rgb(var(--c28))">' +
+    'python3 server.py      <span style="color:rgb(var(--c20))"># Windows: python server.py</span></pre>' +
     '<p style="margin-top:14px">Then open this in Chrome:</p>' +
-    '<pre style="background:#052227;border:1px solid #14484f;padding:12px 14px;border-radius:8px;color:#9ff0dd">' +
+    '<pre style="background:rgb(var(--c8));border:1px solid rgb(var(--c14));padding:12px 14px;border-radius:8px;color:rgb(var(--c28))">' +
     'http://127.0.0.1:8794/stage.html</pre>' +
-    '<p style="margin-top:18px;color:#7fb3ab">If you changed "port" in barehands.json, use that port instead.</p>' +
+    '<p style="margin-top:18px;color:rgb(var(--c23))">If you changed "port" in barehands.json, use that port instead.</p>' +
     '</div></body>';
   throw new Error("barehands: opened over file://, server required");
 }
@@ -299,13 +415,21 @@ if (location.protocol === "file:") {
 setTimeout(function () {
   var b = document.getElementById("boot");
   if (b && b.isConnected) b.innerHTML +=
-    '<span style="color:#7fb3ab;font-size:12px">still loading? the first run downloads the hand tracker and needs internet once. TROUBLESHOOTING.md has more.</span>';
+    '<span style="color:rgb(var(--c23));font-size:12px">still loading? the first run downloads the hand tracker and needs internet once. TROUBLESHOOTING.md has more.</span>';
 }, 12000);
 </script>
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
-<div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">POINT (index out, others folded) = arrow cursor · stop on something = it opens (moving selects nothing) · PRESS AND HOLD = drag · TWO FINGERS = scroll · pinch-drag = move · two hands = scale · MOUSE: click = open, drag = move, RIGHT-drag = rotate, wheel = scroll a note / RESIZE a model or image, corner-drag = resize anything · CLAP = ring center-stage · CLAW: flash open, claw, aim, strain 2s, SNAP = force pull · H head control (blink = open, 2 blinks = file, wink = carry) · R respawn / C camera / D debug</div>
+<div id="boot">BAREHANDS<br><span style="color:rgb(var(--c31));font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:rgb(var(--c31));font-size:13px">loading hand tracker… allow the camera when asked</span></div>
+<!-- the hint bar is gone: the controls are the UI now -->
+<div id="intro">
+  <div class="rings"></div><div class="rings"></div><div class="rings"></div>
+  <div class="sweep"></div>
+  <div class="wel">WELCOME TO</div>
+  <div class="nov"></div>
+  <div class="sub">NO VR OPERATING SYSTEM</div>
+</div>
+<div id="modes"></div>
 <div id="debug"></div>
 <div id="toast"></div>
 
@@ -483,14 +607,14 @@ function pointSingle(cur) {
     if (sc) sc.tapT = Date.now() / 1000;
     return ringToggle(c);
   }
-  if (c.type === "orb")     return openBrowser(c.def.orb, c.x, c.y);
+  if (c.type === "orb")     return orbActivate(c);
   if (c.type === "browser") return browserTap(c, cur);
 }
 function pointDouble(cur) {
   const c = hitTest(cur);
   if (!c) return;
   if (c.type === "card" && c.def.file)            return openPanel(c);
-  if (c.type === "img" || c.type === "model" ||
+  if (c.type === "img" || c.type === "model" || c.type === "wdg" ||
       c.type === "panel" || c.type === "browser") return killItem(c);
 }
 function pointClick(cur) {
@@ -638,6 +762,8 @@ const RING = {
   // palette eyedropped from the design reference (exact reference
   // colors, SUBTLE state shifts — a deep-blue listening state was
   // unreadable and died)
+  COLS0: { idle: [140, 235, 240], listening: [120, 205, 250],
+           thinking: [150, 240, 210], speaking: [190, 250, 245] },
   COLS: { idle: [140, 235, 240], listening: [120, 205, 250],
           thinking: [170, 245, 250], speaking: [140, 235, 240] },
   MOODT: { red: [255, 82, 82], amber: [255, 179, 71], green: null },
@@ -718,7 +844,7 @@ function drawRing(sc) {
   const bc = c.map((v, i) => Math.round(v + ([235, 250, 252][i] - v) * wp));
   const col = a => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   const band = a => `rgba(${bc[0]},${bc[1]},${bc[2]},${a})`;
-  const hot = a => `rgba(228,250,252,${a})`;    // the white-hot rim
+  const hot = a => `rgba(var(--c38),${a})`;    // the white-hot rim
   const x = sc.ctx;
   ensureRingRes(sc);                    // the pixelation fix (round 4)
   const tap = Math.exp(-Math.max(0, t - sc.tapT) * 4);
@@ -783,19 +909,24 @@ function drawRing(sc) {
   x.beginPath(); x.arc(0, 0, 119, 0, 7); x.stroke();
   // wordmark + status — sized UP (round 4: the clear core has room);
   // dark halo shadow keeps them readable over live video
-  x.shadowColor = "rgba(2,10,10,0.9)"; x.shadowBlur = 7;
-  x.fillStyle = `rgba(235,250,250,${0.94 + wp * 0.06})`;
-  const nm = (CFG.name || "ASSISTANT").toUpperCase();
-  const fpx = nm.length <= 6 ? 27 : nm.length <= 9 ? 20 : 14;
+  x.shadowColor = "rgba(var(--c2),0.9)"; x.shadowBlur = 7;
+  x.fillStyle = `rgba(var(--c41),${0.94 + wp * 0.06})`;
+  const nm = NOV_NAME;
+  const fpx = nm.length <= 6 ? 34 : nm.length <= 9 ? 25 : 18;
   x.font = `700 ${fpx}px 'SF Mono', Menlo, monospace`;
   x.textAlign = "center"; x.textBaseline = "middle";
-  x.fillText(nm.split("").join(".") + ".", 0, -12);
+  // NOVROS reads as a wordmark, not as spaced-out initials
+  x.fillText(nm, 0, -13);
   x.globalAlpha = 0.85;
   x.fillStyle = col(0.98);
   x.font = "600 14px 'SF Mono', Menlo, monospace";
-  const status = { idle: "ACTIVE", listening: "LISTENING",
-                   thinking: "THINKING", speaking: "SPEAKING" }[st];
-  x.fillText((status || "ACTIVE").split("").join(" "), 0, 28);
+  // idle says what to DO, not what it IS: START when the menu is shut,
+  // MENU while it is open. The live states still speak for themselves.
+  const bloomUp = items.some(i => i.type === "orb" && i.el.isConnected);
+  const status = st === "idle" ? (bloomUp ? "MENU" : "START")
+    : ({ listening: "LISTENING", thinking: "THINKING",
+         speaking: "SPEAKING" }[st] || "START");
+  x.fillText(status.split("").join(" "), 0, 30);
   x.shadowBlur = 0; x.globalAlpha = 1;
   x.restore();
 }
@@ -1479,6 +1610,18 @@ function endPresent() {
 // Tap the ring → the configured folders bloom as glass ORBS around it
 // (fat circular tap targets); tap an orb → its browser pane grows
 // FROM the orb's spot; tap the ring again → the orbs retract.
+// Every plane -- mouse, finger, head -- activates a station through here,
+// so the three can never drift apart on what a station does.
+function orbActivate(c) {
+  const d = c.def || {};
+  if (d.menu === "settings") return openSettings();
+  if (d.orb === null || d.orb === undefined) {
+    toast(`${d.title}: no folder yet — point one at it in barehands.json`, 2600);
+    return;
+  }
+  openBrowser(d.orb, c.x, c.y);
+}
+
 function makeOrb(def) {
   const el = document.createElement("div");
   el.className = "card orb";
@@ -1489,29 +1632,454 @@ function makeOrb(def) {
            stretch: null };
 }
 
+// THE NOVROS MENU: six fixed stations around the ring rather than a fan
+// of whatever happened to be in the config. Angles are screen angles, y
+// down, so -PI/2 is straight up and +PI/2 is straight down.
+// ============================================================
+// NOVROS THEME  -- one hue drives the whole interface
+// ------------------------------------------------------------
+// Every UI colour in the stylesheet was lifted into a CSS variable and
+// seeded with its shipped value. Rather than flatten them all to one
+// flat accent, the theme ROTATES each colour's hue and keeps its own
+// saturation and lightness, so the palette's carefully-tuned depth --
+// glass tints, rim glows, deep backgrounds -- survives any hue you pick.
+// The chroma-key green is deliberately excluded: it is a keying signal.
+// ============================================================
+const THEME = {
+  hue: 168, BASE_HUE: 168,
+  rgb2hsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+    if (mx === mn) return [0, 0, l];
+    const d = mx - mn;
+    const sat = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    let h;
+    if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0));
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    return [h * 60, sat, l];
+  },
+  hsl2rgb(h, sat, l) {
+    h = ((h % 360) + 360) % 360 / 360;
+    if (sat === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+    const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat, pp = 2 * l - q;
+    const f = t => {
+      t = (t + 1) % 1;
+      if (t < 1 / 6) return pp + (q - pp) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return pp + (q - pp) * (2 / 3 - t) * 6;
+      return pp;
+    };
+    return [f(h + 1 / 3), f(h), f(h - 1 / 3)].map(v => Math.round(v * 255));
+  },
+  apply(hue) {
+    this.hue = ((hue % 360) + 360) % 360;
+    const shift = this.hue - this.BASE_HUE;
+    const root = document.documentElement;
+    for (const k in THEME_BASE) {
+      const [r, g, b] = THEME_BASE[k];
+      const [h, sat, l] = this.rgb2hsl(r, g, b);
+      root.style.setProperty(k, this.hsl2rgb(h + shift, sat, l).join(","));
+    }
+    // the ring is drawn on canvas, so it needs the same rotation applied
+    // to its own state palette rather than inheriting from CSS
+    if (typeof RING !== "undefined" && RING.COLS0) {
+      for (const st in RING.COLS0) {
+        const [r, g, b] = RING.COLS0[st];
+        const [h, sat, l] = this.rgb2hsl(r, g, b);
+        RING.COLS[st] = this.hsl2rgb(h + shift, sat, l);
+      }
+    }
+    try { localStorage.setItem("novros-hue", String(this.hue)); } catch {}
+    const w = document.getElementById("wheelDot");
+    if (w) w.style.transform = `rotate(${this.hue}deg) translateY(-19px)`;
+  },
+  restore() {
+    let h = 168;
+    try { const v = localStorage.getItem("novros-hue"); if (v !== null) h = +v; } catch {}
+    this.apply(h);
+  },
+};
+
+// ============================================================
+// NOVROS INPUT PLANES  -- which ways in are live
+// ============================================================
+const INPUT = { mouse: true, hand: true, head: false };
+if (typeof window !== "undefined") {
+  window.THEME = THEME; window.INPUT = INPUT;   // live-tunable, like TUNE
+}
+const MODES = [
+  { k: "MOUSE + HAND", m: 1, a: 1, d: 0 },
+  { k: "MOUSE + HEAD", m: 1, a: 0, d: 1 },
+  { k: "MOUSE ONLY",   m: 1, a: 0, d: 0 },
+  { k: "HAND ONLY",    m: 0, a: 1, d: 0 },
+  { k: "HEAD ONLY",    m: 0, a: 0, d: 1 },
+];
+function setMode(i) {
+  if (typeof window !== "undefined") window.setMode = setMode;
+  const M = MODES[i]; if (!M) return;
+  INPUT.mouse = !!M.m; INPUT.hand = !!M.a;
+  const wantHead = !!M.d;
+  if (wantHead && !HEAD.on) HEAD.toggle();
+  else if (!wantHead && HEAD.on) HEAD.stop();
+  INPUT.head = wantHead;
+  if (!INPUT.hand) {                       // put down anything a hand held
+    Object.keys(cursors).map(Number)
+      .filter(n => n !== MOUSE_ID && n !== HEAD_ID)
+      .forEach(dropCursor);
+  }
+  if (!INPUT.mouse) document.body.style.cursor = "";
+  [...document.querySelectorAll("#modes button[data-m]")]
+    .forEach((b, n) => b.classList.toggle("on", n === i));
+  try { localStorage.setItem("novros-mode", String(i)); } catch {}
+}
+
+function buildModes() {
+  const bar = document.getElementById("modes");
+  if (!bar) return;
+  bar.innerHTML =
+    MODES.map((M, i) => `<button data-m="${i}">${M.k}</button>`).join("") +
+    `<button id="wheelBtn" title="interface colour" style="position:relative;width:34px;padding:0;
+       background:conic-gradient(hsl(0 80% 62%),hsl(60 80% 62%),hsl(120 80% 62%),
+       hsl(180 80% 62%),hsl(240 80% 62%),hsl(300 80% 62%),hsl(360 80% 62%));
+       border-radius:50%;"><span id="wheelDot" style="position:absolute;left:50%;top:50%;
+       width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:#fff;
+       box-shadow:0 0 5px rgba(0,0,0,.7);transform-origin:50% 50%;"></span></button>`;
+  bar.querySelectorAll("button[data-m]").forEach((b, i) =>
+    b.addEventListener("click", e => { e.stopPropagation(); setMode(i); }));
+
+  // THE COLOUR WHEEL: press anywhere on the ring and drag round it; the
+  // angle you are pointing at IS the hue, so it reads as a wheel rather
+  // than a slider pretending to be one.
+  const btn = document.getElementById("wheelBtn");
+  const pick = e => {
+    const r = btn.getBoundingClientRect();
+    const a = Math.atan2(e.clientY - (r.top + r.height / 2),
+                         e.clientX - (r.left + r.width / 2));
+    THEME.apply(a * 180 / Math.PI + 90);
+  };
+  let dragging = false;
+  btn.addEventListener("mousedown", e => {
+    e.stopPropagation(); e.preventDefault(); dragging = true; pick(e);
+  });
+  addEventListener("mousemove", e => { if (dragging) pick(e); });
+  addEventListener("mouseup", () => { dragging = false; });
+  let i0 = 0;
+  try { const v = localStorage.getItem("novros-mode"); if (v !== null) i0 = +v; } catch {}
+  setMode(MODES[i0] ? i0 : 0);
+}
+
+// The settings station: says what is wired, in one place.
+function openSettings() {
+  openPanel({ def: { title: "SETTINGS", file: "" } }, [
+    "INPUT PLANES",
+    "  Pick a plane from the buttons, top right. Mouse is on by default.",
+    "",
+    "MOUSE",
+    "  click open · drag move · right-drag rotate · wheel scroll or resize",
+    "  corner-drag resize · right-click (no move) flattens a rotation",
+    "",
+    "HAND",
+    "  one finger out    arrow cursor",
+    "  stop on something it opens (a moving hand selects nothing)",
+    "  press and hold    drag it around",
+    "  two fingers       scroll the pane under the cursor",
+    "  pinch-drag        move · two hands scale · clap clears the board",
+    "",
+    "HEAD  (press H)",
+    "  turn your head    move the cursor",
+    "  one blink open a folder · two blinks open a file",
+    "  wink, move, wink  carry something",
+    "",
+    "COLOUR",
+    "  The wheel, top right, rotates the whole interface.",
+    "",
+    "KEYS   R respawn · C camera · D debug · H head · 1-5 planes",
+  ].join("\n"));
+}
+
+// ============================================================
+// THE INTRO
+// ============================================================
+function runIntro() {
+  const el = document.getElementById("intro");
+  if (!el) return;
+  const nov = el.querySelector(".nov");
+  if (nov) nov.innerHTML = [..."NOVROS"]
+    .map((ch, i) => `<span style="animation-delay:${0.55 + i * 0.09}s">${ch}</span>`).join("");
+  setTimeout(() => {
+    el.classList.add("gone");
+    setTimeout(() => el.remove(), 1000);
+  }, 3000);
+}
+
+// ============================================================
+// NOVROS WIDGETS -- clock, date, weather
+// ------------------------------------------------------------
+// They are ordinary board items, so every control plane already moves,
+// scales and closes them with no special cases. They live in the Apps
+// station, they wear the current theme because they are built from the
+// same CSS variables, and which ones you had open survives a reload.
+// Weather comes from Open-Meteo, which needs no key and speaks CORS, so
+// nothing has to go through the server for it.
+// ============================================================
+const WDG_KINDS = {
+  clock:   { title: "Clock",   body: "analogue face" },
+  date:    { title: "Date",    body: "day and month" },
+  weather: { title: "Weather", body: "now and next hours" },
+};
+const WX_CODE = {
+  0:"Clear",1:"Mainly clear",2:"Partly cloudy",3:"Cloudy",45:"Fog",48:"Fog",
+  51:"Light drizzle",53:"Drizzle",55:"Drizzle",61:"Light rain",63:"Rain",
+  65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",71:"Light snow",
+  73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Showers",81:"Showers",
+  82:"Heavy showers",85:"Snow showers",86:"Snow showers",95:"Thunderstorm",
+  96:"Thunderstorm",99:"Thunderstorm",
+};
+
+function widgetState() {
+  try { return JSON.parse(localStorage.getItem("novros-widgets") || "[]"); }
+  catch { return []; }
+}
+function saveWidgets() {
+  const live = items.filter(i => i.type === "wdg" && i.el.isConnected)
+    .map(i => ({ k: i.wkind,
+                 x: +(i.x / innerWidth).toFixed(4),
+                 y: +(i.y / innerHeight).toFixed(4),
+                 s: +(i.scale || 1).toFixed(3) }));
+  try { localStorage.setItem("novros-widgets", JSON.stringify(live)); } catch {}
+}
+
+function makeWidget(kind) {
+  const el = document.createElement("div");
+  el.className = `card wdg ${kind}w`;
+  el.innerHTML = `<div class="win"></div>`;
+  BEHIND.appendChild(el);
+  const w = { el, id: UID++, type: "wdg", wkind: kind,
+              def: { title: WDG_KINDS[kind].title, file: "" },
+              x: innerWidth * 0.5, y: innerHeight * 0.5, scale: 1, vx: 0, vy: 0,
+              grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
+  items.push(w);
+  paintWidget(w);
+  return w;
+}
+
+function toggleWidget(kind, x, y) {
+  const ex = items.find(i => i.type === "wdg" && i.wkind === kind && i.el.isConnected);
+  if (ex) { killItem(ex); setTimeout(saveWidgets, 60); return; }
+  const w = makeWidget(kind);
+  if (x != null) { w.x = x; w.y = y; }
+  w.anim = { k: "in", t: 0 }; w.el.style.opacity = "0.05";
+  saveWidgets();
+}
+
+function restoreWidgets() {
+  widgetState().forEach(st => {
+    if (!WDG_KINDS[st.k]) return;
+    const w = makeWidget(st.k);
+    w.x = (st.x ?? 0.5) * innerWidth;
+    w.y = (st.y ?? 0.5) * innerHeight;
+    w.scale = st.s || 1;
+    w.anim = { k: "in", t: 0 }; w.el.style.opacity = "0.05";
+  });
+}
+
+// ---- weather, fetched once and refreshed on the quarter hour ----
+const WX = { data: null, place: "", t: 0, busy: false };
+async function fetchWeather() {
+  if (WX.busy || Date.now() - WX.t < 900000) return;
+  WX.busy = true;
+  try {
+    let lat = null, lon = null;
+    try {
+      const j = await (await fetch("https://ipapi.co/json/")).json();
+      lat = j.latitude; lon = j.longitude; WX.place = j.city || j.region || "";
+    } catch {}
+    if (lat == null) { WX.busy = false; return; }
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code` +
+      `&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto`;
+    WX.data = await (await fetch(u)).json();
+    WX.t = Date.now();
+  } catch {}
+  WX.busy = false;
+}
+
+function paintWidget(w) {
+  const box = w.el.firstElementChild;
+  const now = new Date();
+  if (w.wkind === "date") {
+    box.innerHTML =
+      `<div><span class="dday">${now.toLocaleDateString(undefined,{weekday:"short"})}</span> ` +
+      `<span class="dmon">${now.toLocaleDateString(undefined,{month:"short"})}</span></div>` +
+      `<div class="dnum">${now.getDate()}</div>`;
+    return;
+  }
+  if (w.wkind === "clock") {
+    let cv = box.querySelector("canvas");
+    if (!cv) { box.innerHTML = ""; cv = document.createElement("canvas");
+               cv.width = cv.height = 320; cv.style.width = cv.style.height = "160px";
+               box.appendChild(cv); }
+    drawClock(cv, now);
+    return;
+  }
+  if (w.wkind === "weather") {
+    const d = WX.data;
+    if (!d || !d.current) {
+      box.innerHTML = `<div class="wlbl">Weather</div><div class="wsm" style="margin-top:10px">
+        locating…</div>`;
+      return;
+    }
+    const t = Math.round(d.current.temperature_2m);
+    const cond = WX_CODE[d.current.weather_code] || "—";
+    const hi = Math.round(d.daily.temperature_2m_max[0]);
+    const lo = Math.round(d.daily.temperature_2m_min[0]);
+    const hrs = [];
+    const nowH = now.getHours();
+    for (let k = 0; k < d.hourly.time.length && hrs.length < 6; k++) {
+      const hh = new Date(d.hourly.time[k]).getHours();
+      if (new Date(d.hourly.time[k]) > now || (hh === nowH && hrs.length))
+        hrs.push({ h: hh, t: Math.round(d.hourly.temperature_2m[k]) });
+    }
+    box.innerHTML =
+      `<div style="display:flex;justify-content:space-between;align-items:flex-start">
+         <div><div class="wlbl">${escT(WX.place || "Here")}</div>
+              <div class="wbig">${t}&deg;</div></div>
+         <div style="text-align:right"><div class="wmid">${escT(cond)}</div>
+              <div class="wsm">H:${hi}&deg;  L:${lo}&deg;</div></div>
+       </div>
+       <div class="strip">${hrs.map(o =>
+          `<div><div class="h">${String(o.h).padStart(2,"0")}</div>
+                <div class="t">${o.t}&deg;</div></div>`).join("")}</div>`;
+  }
+}
+
+function drawClock(cv, now) {
+  const x = cv.getContext("2d"), R = 160;
+  const css = getComputedStyle(document.documentElement);
+  const c = n => `rgb(${(css.getPropertyValue(n) || "140,240,225").trim()})`;
+  x.clearRect(0, 0, 320, 320);
+  x.save(); x.translate(R, R);
+  x.strokeStyle = c("--c33"); x.lineWidth = 3; x.globalAlpha = 0.5;
+  x.beginPath(); x.arc(0, 0, 146, 0, 7); x.stroke(); x.globalAlpha = 1;
+  for (let i = 0; i < 60; i++) {                 // the minute track
+    const a = i * Math.PI / 30, big = i % 5 === 0;
+    x.globalAlpha = big ? 0.9 : 0.34;
+    x.strokeStyle = c("--c39"); x.lineWidth = big ? 4 : 2;
+    x.beginPath();
+    x.moveTo(Math.sin(a) * (big ? 118 : 128), -Math.cos(a) * (big ? 118 : 128));
+    x.lineTo(Math.sin(a) * 138, -Math.cos(a) * 138);
+    x.stroke();
+  }
+  x.globalAlpha = 1;
+  const hand = (ang, len, wid, col, alpha) => {
+    x.globalAlpha = alpha; x.strokeStyle = col; x.lineWidth = wid;
+    x.lineCap = "round"; x.beginPath(); x.moveTo(0, 0);
+    x.lineTo(Math.sin(ang) * len, -Math.cos(ang) * len); x.stroke();
+  };
+  const h = now.getHours() % 12, m = now.getMinutes(), sec = now.getSeconds();
+  hand((h + m / 60) * Math.PI / 6, 74, 10, c("--c41"), 0.97);
+  hand((m + sec / 60) * Math.PI / 30, 112, 7, c("--c41"), 0.97);
+  hand(sec * Math.PI / 30, 124, 3, c("--c33"), 0.95);
+  x.fillStyle = c("--c33"); x.beginPath(); x.arc(0, 0, 8, 0, 7); x.fill();
+  x.restore();
+}
+
+setInterval(() => {
+  const live = items.filter(i => i.type === "wdg" && i.el.isConnected);
+  if (!live.length) return;
+  if (live.some(i => i.wkind === "weather")) fetchWeather();
+  live.forEach(paintWidget);
+}, 1000);
+
+const THEME_BASE = {
+  "--c0": [0,229,255],
+  "--c2": [2,10,10],
+  "--c3": [2,14,12],
+  "--c4": [3,18,16],
+  "--c5": [3,33,29],
+  "--c6": [4,25,28],
+  "--c7": [4,26,24],
+  "--c8": [5,34,39],
+  "--c9": [10,40,36],
+  "--c10": [14,40,36],
+  "--c11": [16,44,40],
+  "--c12": [18,48,44],
+  "--c13": [18,60,54],
+  "--c14": [20,72,79],
+  "--c15": [30,70,64],
+  "--c16": [52,108,100],
+  "--c17": [58,116,108],
+  "--c18": [60,120,112],
+  "--c19": [70,140,130],
+  "--c20": [107,156,150],
+  "--c21": [111,227,201],
+  "--c22": [111,229,214],
+  "--c23": [127,179,171],
+  "--c24": [140,225,212],
+  "--c25": [140,240,225],
+  "--c26": [143,240,228],
+  "--c27": [150,255,236],
+  "--c28": [159,240,221],
+  "--c29": [160,240,226],
+  "--c30": [160,255,240],
+  "--c31": [168,216,207],
+  "--c32": [180,255,245],
+  "--c33": [191,255,245],
+  "--c34": [200,245,236],
+  "--c35": [210,255,248],
+  "--c36": [220,245,238],
+  "--c37": [223,243,238],
+  "--c38": [228,250,252],
+  "--c39": [230,255,240],
+  "--c40": [234,255,251],
+  "--c41": [235,250,250],
+  "--c42": [236,255,250],
+};
+const NOV_NAME = "NOVROS";
+const NOV_MENU = [
+  { title: "Apps",      ang: -Math.PI / 2,    menu: "apps" },
+  { title: "Projects",  ang: 0,               menu: "projects" },
+  { title: "Settings",  ang: Math.PI / 4,     menu: "settings" },
+  { title: "Games",     ang: Math.PI / 2,     menu: "games" },
+  { title: "Demos",     ang: 3 * Math.PI / 4, menu: "demos" },
+  { title: "Documents", ang: Math.PI,         menu: "documents" },
+];
+
+// What each station is wired to. Documents and Demos ride the folders
+// barehands.json already configures; the rest are stations waiting for
+// a source, and say so rather than failing silently.
+function novStation(m) {
+  const notesIdx = (CFG.orbs || []).findIndex(o => o.kind !== "media");
+  const propsIdx = (CFG.orbs || []).findIndex(o => o.kind === "media");
+  if (m === "documents" && notesIdx >= 0) {
+    const v = treeCounts(TREES[notesIdx], false);
+    return { orb: notesIdx, body: `${v.dirs} folders · ${v.leaves} notes` };
+  }
+  if (m === "demos" && propsIdx >= 0) {
+    const p = treeCounts(PROPSTREE, true);
+    return { orb: "props", body: `${p.dirs} folders · ${p.leaves} props` };
+  }
+  if (m === "apps") return { orb: "apps", body: "clock · date · weather" };
+  if (m === "settings") return { orb: null, body: "input & controls" };
+  return { orb: null, body: "empty" };
+}
+
 function ringToggle(ring) {
   const up = items.filter(i => i.type === "orb" && i.el.isConnected);
   if (up.length) { up.forEach(killItem); return; }
-  const defs = (CFG.orbs || []).map((o, i) => {
-    if (o.kind === "media") {
-      const p = treeCounts(PROPSTREE, true);
-      return { title: o.title || "Props",
-               body: `${p.dirs} folders · ${p.leaves} props`, orb: "props" };
-    }
-    const v = treeCounts(TREES[i], false);
-    return { title: o.title || "Notes",
-             body: `${v.dirs} folders · ${v.leaves} notes`, orb: i };
+  const defs = NOV_MENU.map(m => {
+    const st = novStation(m.menu);
+    return { title: m.title, ang: m.ang, menu: m.menu,
+             orb: st.orb, body: st.body };
   });
-  const side = ring.x < innerWidth / 2 ? 1 : -1;   // bloom toward center
   defs.forEach((def, i) => {
-    def.ang = (i - (defs.length - 1) / 2) *
-              (defs.length > 3 ? 0.72 : 0.96);     // even fan, any count
-    def.side = side;
+    def.side = 1;                      // full circle: the angle carries it
     const o = makeOrb(def);
     // the ORBITAL CONSTRAINT in physics() owns their position from
     // here — spawn at the current target so the bloom lands true
     const R = 200 * (ring.scale || 1) + 130;
-    o.x = ring.x + side * Math.cos(def.ang) * R;
+    o.x = ring.x + Math.cos(def.ang) * R;
     o.y = ring.y + Math.sin(def.ang) * R;
     o.anim = { k: "in", t: 0, d: i * 0.07 };       // staggered bloom
     o.el.style.opacity = "0.05";
@@ -1549,13 +2117,14 @@ function treeCounts(d, isProps) {
   return { dirs, leaves };
 }
 
-function spawnStage(cx = 0.30, cy = 0.45) {
+function spawnStage(cx = 0.5, cy = 0.5) {
   // the default stage: EMPTY glass except THE RING (tap it and the
   // configured orbs bloom). The clap passes 0.5 — the ring
   // materializes center stage.
   items.forEach(killItem);
   const ring = makeRing();
   ring.x = innerWidth * cx; ring.y = innerHeight * cy;
+  return ring;
 }
 
 // ---- THE BROWSER PANES (shelf v3): one pane per kind, an indented
@@ -1581,6 +2150,14 @@ function browserRows(b) {
       else out.push({ d: depth, t: x.title, k: "note", f: x.file });
     });
   };
+  if (b.bkind === "apps") {           // the Apps station lists widgets
+    for (const k in WDG_KINDS) {
+      const on = items.some(i => i.type === "wdg" && i.wkind === k && i.el.isConnected);
+      out.push({ d: 0, k: "widget", w: k,
+                 t: `${WDG_KINDS[k].title}${on ? "   · on board" : ""}` });
+    }
+    return out;
+  }
   if (b.bkind === "props" && PROPSTREE) walk(PROPSTREE, "", 0, true);
   else if (typeof b.bkind === "number" && TREES[b.bkind])
     walk(TREES[b.bkind], "", 0, false);
@@ -1655,7 +2232,7 @@ function openBrowser(kind, ox, oy) {
   const ex = items.find(i => i.type === "browser" && i.bkind === kind);
   if (ex) { killItem(ex); return; }
   loadTree().then(() => {
-    const label = String(kind === "props" ? "Props"
+    const label = String(kind === "props" ? "Props" : kind === "apps" ? "Apps"
       : ((CFG.orbs || [])[kind] || {}).title || "Notes").toUpperCase();
     const el = document.createElement("div");
     el.className = "panel browser";
@@ -1705,6 +2282,9 @@ function browserTap(b, cur) {
         openPanel({ def: { file: row.f, title: row.t } });
         killItem(b);   // v3.3 (his broadened rule): selecting ANYTHING
                        // closes the whole pane — only dir taps keep it
+      } else if (row.k === "widget") {
+        toggleWidget(row.w, b.x + 480 < innerWidth - 200 ? b.x + 440 : b.x - 440, b.y);
+        browserRefresh(b);          // the row relabels; the pane stays up
       } else if (row.k === "prop") {
         const src = "/media/" + row.f;
         const it = isModelSrc(src) ? makeModel(src, row.t)
@@ -1728,16 +2308,22 @@ function renderNote(text) {
   }).join("\n");
 }
 
-async function openPanel(card) {
+async function openPanel(card, literal) {
   if (items.some(i => i.type === "panel" && i.def === card.def)) return;
-  let text = "(couldn't load the note)";
-  try {
-    const r = await fetch("/note?f=" + encodeURIComponent(card.def.file));
-    if (r.ok) text = await r.text();
-  } catch (e) {}
+  if (items.some(i => i.type === "panel" &&
+                      i.def.title && i.def.title === card.def.title)) return;
+  let text = literal != null ? literal : "(couldn't load the note)";
+  if (literal == null) {
+    try {
+      const r = await fetch("/note?f=" + encodeURIComponent(card.def.file));
+      if (r.ok) text = await r.text();
+    } catch (e) {}
+  }
   const el = document.createElement("div");
   el.className = "panel";
-  el.innerHTML = `<div class="bar"><h3>${escT(card.def.file.split("/").pop().replace(".md",""))}</h3></div>` +
+  const ttl = card.def.file ? card.def.file.split("/").pop().replace(".md", "")
+                            : (card.def.title || "NOTE");
+  el.innerHTML = `<div class="bar"><h3>${escT(ttl)}</h3></div>` +
                  `<div class="body"><div class="scroll">${renderNote(text)}</div></div>`;
   BEHIND.appendChild(el);
   const p = { el, id: UID++, type: "panel", def: card.def, x: innerWidth * 0.5,
@@ -1824,6 +2410,7 @@ addEventListener("keydown", e => {
   if (e.key === "d" || e.key === "D") dbg.style.display = dbg.style.display === "block" ? "none" : "block";
   if (e.key === "c" || e.key === "C") cycleCam();
   if (e.key === "h" || e.key === "H") HEAD.toggle();
+  if (e.key >= "1" && e.key <= "5") setMode(+e.key - 1);
   if (e.key === "p" || e.key === "P") {
     SAMPLER = { until: performance.now() + 4000, r: [], h8: [], h12: [], h16: [], h20: [], s: [], a: [] };
     toast("OMNI sampler: hold the pose for 4 seconds…", 4000);
@@ -1954,6 +2541,7 @@ function beginGrab(c, i, cur) {
 
 function endGrab(c, i, cur) {
   c.grabbedBy = c.grabbedBy.filter(k => k !== i);
+  if (c.type === "wdg") setTimeout(saveWidgets, 40);
   if (c.grabbedBy.length === 1) {
     c.stretch = null;
     const rem = cursors[c.grabbedBy[0]];
@@ -2009,7 +2597,7 @@ function endGrab(c, i, cur) {
           if (sc) sc.tapT = Date.now() / 1000;   // the ring's tap pulse
           ringToggle(c);
         } else if (c.type === "orb") {
-          openBrowser(c.def.orb, c.x, c.y);
+          orbActivate(c);
         }
       }
     }
@@ -2257,7 +2845,7 @@ async function boot() {
   document.getElementById("boot").remove();
   await loadTree();
   spawnStage();
-  toast("barehands v1.0", 2000);  // build fingerprint
+  restoreWidgets();
   let lastT = performance.now();
 
   function frame(now) {
@@ -2267,7 +2855,7 @@ async function boot() {
       const res = landmarker.detectForVideo(cam, now);
       if (HEAD.on) HEAD.update(now);
       const seen = new Set();
-      (res.landmarks || []).forEach((lms, i) => {
+      (INPUT.hand ? (res.landmarks || []) : []).forEach((lms, i) => {
         seen.add(i);
         const cur = getCursor(i);
         const tip = toScreen(lms[8]), thumb = toScreen(lms[4]);
@@ -3698,14 +4286,14 @@ function scrollBy(c, dy) {
 function mouseTap(c, cur) {
   if (!c.el || !c.el.isConnected) return;
   if (c.type === "browser") return browserTap(c, cur);
-  if (c.type === "orb")     return openBrowser(c.def.orb, c.x, c.y);
+  if (c.type === "orb")     return orbActivate(c);
   if (c.type === "widget" && c.def.w === "ring") {
     const sc = RINGS.get(c.id);
     if (sc) sc.tapT = Date.now() / 1000;
     return ringToggle(c);
   }
   if (c.type === "card" && c.def.file) return openPanel(c);
-  if (c.type === "img" || c.type === "model") return killItem(c);
+  if (c.type === "img" || c.type === "model" || c.type === "wdg") return killItem(c);
   if (c.type === "panel") {                       // notes close at the bar
     const barEl = c.el.querySelector(".bar");
     const r = barEl && barEl.getBoundingClientRect();
@@ -3716,6 +4304,7 @@ function mouseTap(c, cur) {
 addEventListener("contextmenu", e => { if (mDrag || hitTest({ x: e.clientX, y: e.clientY })) e.preventDefault(); });
 
 addEventListener("mousedown", e => {
+  if (!INPUT.mouse) return;
   const x = e.clientX, y = e.clientY;
   const c = hitTest({ x, y });
   if (!c) return;
@@ -3743,6 +4332,7 @@ addEventListener("mousedown", e => {
 });
 
 addEventListener("mousemove", e => {
+  if (!INPUT.mouse) return;
   const x = e.clientX, y = e.clientY;
   if (!mDrag) {                            // idle: hint what the corner does
     const c = hitTest({ x, y });
@@ -3781,6 +4371,7 @@ addEventListener("mousemove", e => {
 });
 
 addEventListener("mouseup", e => {
+  if (!INPUT.mouse) return;
   if (!mDrag) return;
   const { c, cur, kind } = mDrag;
   const x = e.clientX, y = e.clientY;
@@ -3795,15 +4386,18 @@ addEventListener("mouseup", e => {
   } else if (kind === "resize") {
     c.el.classList.remove("grabbed");
     c.el.classList.remove("gripping"); gripEl = null;
+    if (c.type === "wdg") saveWidgets();
   } else {
     const click = !mDrag.moved;
     endGrab(c, MOUSE_ID, cur);
     if (click) mouseTap(c, cur);
+    if (c.type === "wdg") saveWidgets();
   }
   mDrag = null;
 });
 
 addEventListener("wheel", e => {
+  if (!INPUT.mouse) return;
   const c = hitTest({ x: e.clientX, y: e.clientY });
   if (!c) return;
   e.preventDefault();
@@ -3827,6 +4421,9 @@ if (ROLE === "render") {
   if (h) h.remove();
   renderLoop();
 } else {
+  THEME.restore();     // theme and chrome belong to the PAGE, so they come
+  buildModes();        // up immediately rather than waiting on a camera
+  runIntro();
   boot().catch(e => {
     document.getElementById("boot").innerHTML =
       `STAGE FAILED TO BOOT<br><span style="color:#ff6666;font-size:13px">${e.message}</span>`;
