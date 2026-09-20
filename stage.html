@@ -451,13 +451,28 @@ SPDX-License-Identifier: AGPL-3.0-or-later
             background:rgb(var(--c22));
             box-shadow:inset 0 0 0 1.5px rgba(0,0,0,0.35),
                        0 0 10px rgba(var(--c22),0.8); }
-  #wpop { position:fixed; top:56px; right:14px; z-index:1600; width:232px;
-          padding:16px; border-radius:18px; display:none;
+  #bgpop { display:none; }
+  #bgpop.open { display:block; }
+  #bgpop, #wpop { position:fixed; top:56px; right:14px; z-index:1600; width:232px;
+          padding:16px; border-radius:18px;
           background:linear-gradient(168deg, rgba(var(--c30),0.20), rgba(var(--c5),0.86));
           border:1px solid rgba(var(--c33),0.38); backdrop-filter:blur(22px);
           -webkit-backdrop-filter:blur(22px);
           box-shadow:0 18px 54px rgba(0,0,0,0.55); }
+  #wpop { display:none; }
   #wpop.open { display:block; }
+  #bgpop label { display:block; font:600 9.5px "SF Mono",Menlo,monospace;
+                 letter-spacing:0.16em; color:rgba(var(--c39),0.62);
+                 text-transform:uppercase; margin:12px 0 6px; }
+  #bgpop input[type=range] { width:100%; height:5px; -webkit-appearance:none;
+      border-radius:3px; outline:none;
+      background:linear-gradient(90deg,#000,#888,#fff); }
+  #bgpop input[type=range]::-webkit-slider-thumb { -webkit-appearance:none;
+      width:15px; height:15px; border-radius:50%; background:#fff; cursor:pointer;
+      box-shadow:0 0 0 1.5px rgba(0,0,0,0.5), 0 2px 5px rgba(0,0,0,0.5); }
+  .bgdone { cursor:pointer; padding:5px 9px; border-radius:7px;
+            border:1px solid rgba(var(--c33),0.35); background:rgba(var(--c5),0.5);
+            color:rgba(var(--c39),0.85); font:600 10.5px "SF Mono",Menlo,monospace; }
   .wheel { position:relative; width:200px; height:200px; margin:0 auto 14px;
            border-radius:50%; cursor:crosshair;
            background:radial-gradient(circle, #fff 0%, rgba(255,255,255,0) 68%),
@@ -544,6 +559,12 @@ setTimeout(function () {
   <div class="sub">NO VR OPERATING SYSTEM</div>
 </div>
 <div id="modes"></div>
+<div id="bgpop">
+  <div class="wheel"><div class="wdot"></div></div>
+  <label>Lightness</label>
+  <input class="bglum ctl" type="range" min="4" max="96" value="42">
+  <div class="wrow"><span class="bghex"></span><button class="bgdone ctl">DONE</button></div>
+</div>
 <div id="wpop" class="pick">
   <div class="wheel"><div class="wdot"></div></div>
   <label>Brightness</label>
@@ -2005,17 +2026,26 @@ function buildModes() {
 const BG = {
   mode: "none",          // none | blur | colour | image
   src: "", blur: 14, on: false, seg: null, busy: false,
+  // its own colour, independent of the theme: the theme's darkest token
+  // was standing in for this, and that token is very nearly black
+  colour: "24,68,96", hue: 200, sat: 0.75, lum: 0.42,
   cv: null, ctx: null, bgc: null, bgx: null, pc: null, px: null,
   mc: null, mx: null, img: null, W: 0, H: 0,
 
   save() {
-    try { localStorage.setItem("novros-bg",
-      JSON.stringify({ m: this.mode, s: this.src, b: this.blur })); } catch {}
+    try { localStorage.setItem("novros-bg", JSON.stringify({
+      m: this.mode, s: this.src, b: this.blur,
+      c: this.colour, h: this.hue, t: this.sat, l: this.lum })); } catch {}
   },
   restore() {
     try {
       const v = JSON.parse(localStorage.getItem("novros-bg") || "null");
-      if (v) { this.blur = v.b ?? 14; if (v.m && v.m !== "none") this.set(v.m, v.s); }
+      if (v) {
+        this.blur = v.b ?? 14;
+        this.colour = v.c || this.colour;
+        this.hue = v.h ?? this.hue; this.sat = v.t ?? this.sat; this.lum = v.l ?? this.lum;
+        if (v.m && v.m !== "none") this.set(v.m, v.s);
+      }
     } catch {}
   },
 
@@ -2128,9 +2158,8 @@ const BG = {
       if (ir > cr) dw = H * ir; else dh = W / ir;
       this.bgx.drawImage(this.img, (W - dw) / 2, (H - dh) / 2, dw, dh);
     } else {
-      const c = getComputedStyle(document.documentElement)
-        .getPropertyValue("--c5").trim() || "3,33,29";
-      this.bgx.fillStyle = `rgb(${c})`; this.bgx.fillRect(0, 0, W, H);
+      this.bgx.fillStyle = `rgb(${this.colour})`;
+      this.bgx.fillRect(0, 0, W, H);
     }
 
     // 2. the person, cut out by the mask (scaled up smoothly, which is
@@ -2163,9 +2192,82 @@ function bgImages() {
   return out.sort((a, b) => a.localeCompare(b)).slice(0, 300);
 }
 
+// The BACKGROUND's own colour picker. Same disc as the theme's, but it
+// reports a colour instead of rotating the palette, and it carries a
+// lightness slider because a backdrop wants to be any shade -- the
+// theme's gamma bend is the wrong control for that.
+function bgColourFromHSL() {
+  BG.colour = THEME.hsl2rgb(BG.hue, BG.sat, BG.lum).join(",");
+  const hex = "#" + BG.colour.split(",").map(n =>
+    (+n).toString(16).padStart(2, "0")).join("").toUpperCase();
+  const pop = document.getElementById("bgpop");
+  if (pop) {
+    const h = pop.querySelector(".bghex"); if (h) h.textContent = hex;
+    const wheel = pop.querySelector(".wheel"), dot = pop.querySelector(".wdot");
+    if (wheel && dot) {
+      const R = wheel.clientWidth / 2 || 100, a = BG.hue * Math.PI / 180;
+      const rr = Math.min(1, BG.sat) * (R * 0.94);
+      dot.style.left = (R + Math.sin(a) * rr) + "px";
+      dot.style.top = (R - Math.cos(a) * rr) + "px";
+      dot.style.background = `rgb(${BG.colour})`;
+    }
+  }
+  document.querySelectorAll('.bgsw div[data-m="colour"]').forEach(d =>
+    d.style.background = `rgb(${BG.colour})`);
+  BG.save();
+}
+
+function openBgPicker(anchor) {
+  const pop = document.getElementById("bgpop");
+  if (!pop) return;
+  pop.classList.add("open");
+  if (anchor) {
+    const r = anchor.getBoundingClientRect();
+    pop.style.top = Math.min(innerHeight - 330, r.bottom + 10) + "px";
+    pop.style.right = "auto";
+    pop.style.left = Math.min(innerWidth - 250, Math.max(10, r.left - 80)) + "px";
+  }
+  bgColourFromHSL();
+}
+
+function buildBgPicker() {
+  const pop = document.getElementById("bgpop");
+  if (!pop || pop.dataset.built) return;
+  pop.dataset.built = "1";
+  const wheel = pop.querySelector(".wheel");
+  const lum = pop.querySelector(".bglum");
+  const pick = e => {
+    const r = wheel.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2);
+    const dy = e.clientY - (r.top + r.height / 2);
+    BG.hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+    BG.sat = Math.min(1, Math.hypot(dx, dy) / (r.width / 2 * 0.94));
+    bgColourFromHSL();
+  };
+  let dragging = false;
+  wheel.addEventListener("mousedown", e => {
+    e.stopPropagation(); e.preventDefault(); dragging = true; pick(e);
+  });
+  addEventListener("mousemove", e => { if (dragging) pick(e); });
+  addEventListener("mouseup", () => { dragging = false; });
+  lum.value = Math.round(BG.lum * 100);
+  lum.addEventListener("input", e => {
+    e.stopPropagation(); BG.lum = +lum.value / 100; bgColourFromHSL();
+  });
+  pop.addEventListener("mousedown", e => e.stopPropagation());
+  pop.addEventListener("click", e => e.stopPropagation());
+  pop.querySelector(".bgdone").addEventListener("click", e => {
+    e.stopPropagation(); pop.classList.remove("open");
+  });
+  addEventListener("mousedown", () => pop.classList.remove("open"));
+  addEventListener("keydown", e => {
+    if (e.key === "Escape") pop.classList.remove("open");
+  });
+}
+
 const UIPREF = { modeBar: true };
 if (typeof window !== "undefined") {
-  window.UIPREF = UIPREF;
+  window.UIPREF = UIPREF; window.BG = BG;
   window.openSettings = () => openSettings();   // hoisted: safe to wrap
   window.setMode = i => setMode(i);
 }
@@ -2242,7 +2344,7 @@ function settingsHTML() {
     <div class="bgsw ctl">
       <div data-m="none" class="${BG.mode === "none" ? "on" : ""}">NONE</div>
       <div data-m="blur" class="${BG.mode === "blur" ? "on" : ""}">BLUR</div>
-      <div data-m="colour" class="${BG.mode === "colour" ? "on" : ""}">COLOUR</div>
+      <div data-m="colour" class="${BG.mode === "colour" ? "on" : ""}" style="background:rgb(${BG.colour})">COLOUR</div>
       ${bgImages().map(u => `<div data-m="image" data-src="${escT(u)}"
         class="${BG.mode === "image" && BG.src === u ? "on" : ""}"
         style="background-image:url('${escT(u)}')"></div>`).join("")}
@@ -2299,7 +2401,9 @@ function openSettings() {
     }));
   el.querySelectorAll(".bgsw div").forEach(n =>
     n.addEventListener("click", e => {
-      e.stopPropagation(); BG.set(n.dataset.m, n.dataset.src || "");
+      e.stopPropagation();
+      BG.set(n.dataset.m, n.dataset.src || "");
+      if (n.dataset.m === "colour") { buildBgPicker(); openBgPicker(n); }
     }));
   const bb = el.querySelector("#bgblur");
   if (bb) bb.addEventListener("input", e => {
