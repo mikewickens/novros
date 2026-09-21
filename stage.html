@@ -3608,6 +3608,106 @@ function drawShape(cv, st, now) {
   x.restore();
 }
 
+// ============================================================
+// SCENES  --  stage.html?scene=<name>
+// ------------------------------------------------------------
+// Named arrangements of the board, for screenshots and for showing
+// somebody one part of it without a tour. Each one stages itself and
+// stops; nothing here animates on a timer.
+// ============================================================
+// toggleWidget TOGGLES, and widgets restore themselves from the last
+// session -- so a scene asking for a clock that was already there turned
+// it OFF. A scene wants the thing present, not flipped.
+function wantWidget(kind, x, y) {
+  const on = items.some(i => i.type === "wdg" && i.wkind === kind && i.el.isConnected);
+  if (!on) toggleWidget(kind, x, y);
+  else {
+    const w = items.find(i => i.type === "wdg" && i.wkind === kind && i.el.isConnected);
+    if (w) { w.x = x; w.y = y; }
+  }
+}
+
+const SCENES = {
+  async home() {
+    ringToggle(DEMO.ring());
+    wantWidget("clock", innerWidth * 0.13, innerHeight * 0.26);
+    wantWidget("date", innerWidth * 0.13, innerHeight * 0.56);
+    wantWidget("weather", innerWidth * 0.27, innerHeight * 0.13);
+    wantWidget("news", innerWidth * 0.63, innerHeight * 0.10);
+    wantWidget("terminal", innerWidth * 0.80, innerHeight * 0.62);
+  },
+  async widgets() {
+    wantWidget("weather", innerWidth * 0.26, innerHeight * 0.20);
+    wantWidget("clock", innerWidth * 0.14, innerHeight * 0.58);
+    wantWidget("date", innerWidth * 0.34, innerHeight * 0.58);
+    wantWidget("news", innerWidth * 0.62, innerHeight * 0.12);
+    wantWidget("terminal", innerWidth * 0.68, innerHeight * 0.55);
+  },
+  async games() {
+    const g = ["tetris", "invaders", "pacman"].map(k => makeGame(k));
+    g.forEach((it, i) => { if (it) { it.x = innerWidth * (0.24 + i * 0.26);
+                                     it.y = innerHeight * 0.5; } });
+  },
+  async shapes() {
+    const s = ["icosa", "knot", "grid", "helix"].map(k => makeShape(k));
+    s.forEach((it, i) => { if (it) { it.x = innerWidth * (0.20 + i * 0.20);
+                                     it.y = innerHeight * 0.48; } });
+    wantWidget("terminal", innerWidth * 0.5, innerHeight * 0.80);
+  },
+  async docs() {
+    openBrowser(0, innerWidth * 0.26, innerHeight * 0.5);
+    await sleepD(900);
+    const b = items.find(i => i.type === "browser" && i.el.isConnected);
+    if (b && b.rows && b.rows.length) {
+      const row = b.el.querySelector(".brow");
+      const r = row && row.getBoundingClientRect();
+      if (r) browserTap(b, { x: r.left + 100, y: r.top + r.height / 2 });
+    }
+    await sleepD(700);
+    const p = items.find(i => i.type === "panel" && i.el.isConnected);
+    if (p) { p.x = innerWidth * 0.62; p.scale = 0.95; }
+  },
+  async settings() { openSettings(); },
+  async terminal() {
+    wantWidget("terminal", innerWidth * 0.5, innerHeight * 0.45);
+    await sleepD(600);
+    const t = items.find(i => i.wkind === "terminal" && i.el.isConnected);
+    if (t) t.scale = 1.7;
+  },
+  async everything() {
+    ringToggle(DEMO.ring());
+    wantWidget("clock", innerWidth * 0.10, innerHeight * 0.22);
+    wantWidget("date", innerWidth * 0.10, innerHeight * 0.52);
+    wantWidget("weather", innerWidth * 0.25, innerHeight * 0.12);
+    wantWidget("news", innerWidth * 0.60, innerHeight * 0.08);
+    wantWidget("terminal", innerWidth * 0.83, innerHeight * 0.30);
+    const k = makeShape("knot"); if (k) { k.x = innerWidth * 0.26; k.y = innerHeight * 0.80; }
+    const h = makeShape("helix"); if (h) { h.x = innerWidth * 0.44; h.y = innerHeight * 0.82; }
+    const t = makeGame("tetris"); if (t) { t.x = innerWidth * 0.78; t.y = innerHeight * 0.74; }
+  },
+};
+
+async function runScene(name) {
+  const fn = SCENES[name];
+  if (!fn) return;
+  DEMO.pace = 1;
+  // start from a known board: a scene that inherits the last session is
+  // not a scene, it is whatever happened to be lying around
+  items.filter(i => i.el.isConnected &&
+    ["panel", "browser", "card", "img", "model", "game", "shape", "wdg"]
+      .includes(i.type)).forEach(killItem);
+  await sleepD(600);
+  // a wallpaper behind the glass, so a screenshot shows the interface
+  // rather than whoever happens to be sitting in front of the camera
+  try {
+    const imgs = bgImages();
+    BG.hideMe = true;
+    await BG.set(imgs.length ? "image" : "colour", imgs[0]);
+  } catch {}
+  await sleepD(500);
+  await fn();
+}
+
 const UIPREF = { modeBar: true, ink: "auto" };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
@@ -4380,7 +4480,7 @@ function browserTap(b, cur) {
         makeGame(row.w);
         browserRefresh(b);
       } else if (row.k === "widget") {
-        toggleWidget(row.w, b.x + 480 < innerWidth - 200 ? b.x + 440 : b.x - 440, b.y);
+        wantWidget(row.w, b.x + 480 < innerWidth - 200 ? b.x + 440 : b.x - 440, b.y);
         browserRefresh(b);          // the row relabels; the pane stays up
       } else if (row.k === "prop") {
         const src = "/media/" + row.f;
@@ -6834,6 +6934,14 @@ if (ROLE === "render") {
   // ?settings=1 opens the panel on load, for screenshots and for anyone
   // who wants to land straight in the controls
   if (Q.get("settings") === "1") setTimeout(() => openSettings(), 1500);
+  if (Q.get("scene")) {
+    const armScene = () => {
+      if (items.some(i => i.type === "widget" && i.el.isConnected))
+        runScene(Q.get("scene")).catch(e => console.error("scene:", e));
+      else setTimeout(armScene, 300);
+    };
+    setTimeout(armScene, 900);
+  }
   if (Q.get("demo") === "1") {
     document.body.classList.add("demo");
     // wait for the board to EXIST rather than for a clock to run out:
