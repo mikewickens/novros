@@ -3743,7 +3743,7 @@ async function runScene(name) {
   await fn();
 }
 
-const UIPREF = { modeBar: true, ink: "auto" };
+const UIPREF = { modeBar: true, ink: "auto", cfgAt: null };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
   window.makeGame = k => makeGame(k);
@@ -3878,7 +3878,10 @@ function openSettings() {
   BEHIND.appendChild(el);
   const p = { el, id: UID++, type: "panel", isCfg: true,
     def: { title: "SETTINGS", file: "" },
-    x: innerWidth * 0.5, y: innerHeight * 0.48, scale: 1, vx: 0, vy: 0,
+    // where you last left it, not always dead centre
+    x: (UIPREF.cfgAt ? UIPREF.cfgAt.x : 0.5) * innerWidth,
+    y: (UIPREF.cfgAt ? UIPREF.cfgAt.y : 0.48) * innerHeight,
+    scale: UIPREF.cfgAt && UIPREF.cfgAt.s ? UIPREF.cfgAt.s : 1, vx: 0, vy: 0,
     grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null, scrollY: 0,
     body: el.querySelector(".scroll") };
   p.anim = { k: "in", t: 0 }; el.style.opacity = "0.05";
@@ -3995,6 +3998,16 @@ function widgetState() {
 // Widgets, wireframes and games all persist: they are all windows you
 // arranged, and "where I left it" should not depend on which kind it was.
 const LAYOUT_KINDS = { wdg: "wkind", shape: "skind", game: "gkind" };
+// The settings panel is not part of the saved layout -- it is not a
+// window you keep -- but WHERE you put it is worth keeping.
+function saveCfgPos(c) {
+  if (!c || !c.el || !c.el.isConnected) return;
+  UIPREF.cfgAt = { x: +(c.x / innerWidth).toFixed(4),
+                   y: +(c.y / innerHeight).toFixed(4),
+                   s: +(c.scale || 1).toFixed(3) };
+  applyPrefs();
+}
+
 function saveWidgets() {
   const live = items
     .filter(i => LAYOUT_KINDS[i.type] && i.el.isConnected)
@@ -4903,6 +4916,7 @@ function beginGrab(c, i, cur) {
 function endGrab(c, i, cur) {
   c.grabbedBy = c.grabbedBy.filter(k => k !== i);
   if (LAYOUT_KINDS[c.type]) setTimeout(saveWidgets, 40);
+  if (c.isCfg) setTimeout(() => saveCfgPos(c), 40);
   if (c.grabbedBy.length === 1) {
     c.stretch = null;
     const rem = cursors[c.grabbedBy[0]];
@@ -6952,11 +6966,13 @@ addEventListener("mouseup", e => {
     c.el.classList.remove("grabbed");
     c.el.classList.remove("gripping"); gripEl = null;
     if (LAYOUT_KINDS[c.type]) saveWidgets();
+    if (c.isCfg) saveCfgPos(c);
   } else {
     const click = !mDrag.moved;
     endGrab(c, MOUSE_ID, cur);
     if (click) mouseTap(c, cur);
     if (LAYOUT_KINDS[c.type]) saveWidgets();
+    if (c.isCfg) saveCfgPos(c);
   }
   mDrag = null;
 });
@@ -6996,7 +7012,20 @@ if (ROLE === "render") {
   runIntro();
   // ?settings=1 opens the panel on load, for screenshots and for anyone
   // who wants to land straight in the controls
-  if (Q.get("settings") === "1") setTimeout(() => openSettings(), 1500);
+  // A deep link fires ONCE and then tidies itself out of the address
+  // bar. Left in place it reopens on every refresh and on every restored
+  // tab, which turns a convenience into something that will not go away.
+  const clearParam = k => {
+    try {
+      const u = new URL(location.href);
+      u.searchParams.delete(k);
+      history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+    } catch {}
+  };
+  if (Q.get("settings") === "1") {
+    setTimeout(() => openSettings(), 1500);
+    clearParam("settings");
+  }
   if (Q.get("scene")) {
     const armScene = () => {
       if (items.some(i => i.type === "widget" && i.el.isConnected))
@@ -7004,6 +7033,7 @@ if (ROLE === "render") {
       else setTimeout(armScene, 300);
     };
     setTimeout(armScene, 900);
+    clearParam("scene");
   }
   if (Q.get("demo") === "1") {
     document.body.classList.add("demo");
