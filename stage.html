@@ -539,12 +539,29 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   /* Forced ink. Scoped to the item layer, which is where readability
      actually suffers over a bright wallpaper; the chrome keeps its own
      contrast because its pills are already solid. */
-  body.ink-white #behind, body.ink-white #behind * { color:#fff; }
-  body.ink-black #behind, body.ink-black #behind * { color:#0a0c0e; }
-  body.ink-white #behind .card, body.ink-white #behind .panel {
-    text-shadow:0 1px 3px rgba(0,0,0,0.55); }
-  body.ink-black #behind .card, body.ink-black #behind .panel {
-    text-shadow:0 1px 2px rgba(255,255,255,0.3); }
+  /* FORCED INK. Scoped to the board AND the chrome, because "all the
+     text" means all of it -- the old rule left the mode bar and the
+     pickers on the theme tint, so half the interface ignored the
+     setting. !important because several of these rules are three
+     classes deep and would otherwise outrank it. */
+  body.ink-white #behind *, body.ink-white #modes button,
+  body.ink-white #wpop, body.ink-white #wpop *,
+  body.ink-white #bgpop, body.ink-white #bgpop * { color:#fff !important; }
+  body.ink-black #behind *, body.ink-black #modes button,
+  body.ink-black #wpop, body.ink-black #wpop *,
+  body.ink-black #bgpop, body.ink-black #bgpop * { color:#0a0c0e !important; }
+  /* a halo, so forced ink stays readable over any backdrop at all --
+     without it white text on a light wallpaper is still white on white */
+  body.ink-white #behind .card, body.ink-white #behind .panel,
+  body.ink-white #modes button {
+    text-shadow:0 1px 4px rgba(0,0,0,0.85), 0 0 14px rgba(0,0,0,0.5) !important; }
+  body.ink-black #behind .card, body.ink-black #behind .panel,
+  body.ink-black #modes button {
+    text-shadow:0 1px 3px rgba(255,255,255,0.75) !important; }
+  /* the selected pills invert their own text, so they must opt out */
+  body.ink-white #modes button.on, body.ink-black #modes button.on,
+  body.ink-white .planes button.on, body.ink-black .planes button.on
+    { color:rgb(var(--c5)) !important; text-shadow:none !important; }
   body.ink-black #behind .sw.on::after { background:#fff; }
   /* ---------- COLOUR PICKER ---------- */
   #wbtn { width:30px; height:30px; padding:0 !important; border-radius:50% !important;
