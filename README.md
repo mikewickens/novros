@@ -35,7 +35,7 @@ NOVROS is a fork, and stays open under the same AGPL-3.0 terms.
 
 ![Procedural 3D](docs/screens/shapes.jpg)
 
-**Games** — Tetris, Space Invaders and Pac-Man, written for the board. Ordinary windows, so they move, scale, rotate and close like anything else.
+**Games** — Tetris, Space Invaders and Asteroids, written for the board. Ordinary windows, so they move, scale, rotate and close like anything else.
 
 ![Games](docs/screens/games.jpg)
 
@@ -90,7 +90,7 @@ Click the ring in the middle and six stations bloom around it —
 **Widgets** — clock, date, weather, and a live news ticker from the BBC,
 the Guardian and Sky.
 
-**Games** — Tetris, Space Invaders and Pac-Man, written for this board.
+**Games** — Tetris, Space Invaders and Asteroids, written for this board.
 
 **Settings** — every threshold as a slider, a colour wheel that rotates
 the whole interface, forced white or black text, and virtual backgrounds

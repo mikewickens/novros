@@ -27,7 +27,7 @@ around it, evenly spaced:
     Widgets     clock, date, weather, news ticker
     Projects    yours to point somewhere
     Settings    every control in one panel
-    Games       Tetris, Space Invaders, Pac-Man
+    Games       Tetris, Space Invaders, Asteroids
     Demos       the props folder
     Documents   your notes
 
@@ -128,11 +128,11 @@ Widgets have no close button — the station toggles them.
 
 # Games
 
-**Games** station. Tetris, Space Invaders and Pac-Man, written for this
+**Games** station. Tetris, Space Invaders and Asteroids, written for this
 board rather than borrowed. They are ordinary windows, so you can move,
 scale, rotate and close them like anything else.
 
-    arrows    move
+    arrows    move, or turn and thrust
     space     drop, or fire
     P         pause
     enter     restart after a game over

@@ -297,6 +297,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   .panel .scroll b { color:#fff; } .panel .scroll .h { color:rgb(var(--c26)); font-weight:700; }
   /* NOVROS: the resize corner announces itself on hover, so the grip is
      discoverable instead of being a secret 26px square. */
+  /* the edge you can pull, lit on approach */
+  .panel.edge-e::after, .panel.edge-s::after, .panel.edge-se::after {
+    content:""; position:absolute; pointer-events:none; border-radius:3px;
+    background:rgba(var(--c30),0.9); box-shadow:0 0 10px rgba(var(--c30),0.8); }
+  .panel.edge-e::after { top:38%; bottom:38%; right:2px; width:3px; }
+  .panel.edge-s::after { left:38%; right:38%; bottom:2px; height:3px; }
+  .panel.edge-se::after { right:3px; bottom:3px; width:15px; height:15px;
+    background:none; border-right:3px solid rgba(var(--c30),0.9);
+    border-bottom:3px solid rgba(var(--c30),0.9); border-bottom-right-radius:5px; }
   .card.rotgrip::before, .panel.rotgrip::before {
     content:""; position:absolute; left:4px; bottom:4px; width:17px; height:17px;
     border-left:2.5px solid rgba(var(--c30),0.95);
@@ -2578,7 +2587,7 @@ function buildBgPicker() {
 }
 
 // ============================================================
-// NOVROS GAMES -- Tetris, Space Invaders, Pac-Man
+// NOVROS GAMES -- Tetris, Space Invaders, Asteroids
 // ------------------------------------------------------------
 // Written here rather than vendored: each is a few hundred lines of
 // canvas, and pulling in three outside projects would mean three sets of
@@ -2589,7 +2598,7 @@ function buildBgPicker() {
 const GAME_KINDS = {
   tetris:   { title: "Tetris",         body: "stack and clear" },
   invaders: { title: "Space Invaders", body: "hold the line" },
-  pacman:   { title: "Pac-Man",        body: "eat the dots" },
+  asteroids:{ title: "Asteroids",      body: "turn, thrust, fire" },
 };
 let lastGameId = 0;
 
@@ -2854,185 +2863,170 @@ function gameInvaders() {
   };
 }
 
-// ---------------------------------------------------------------- PAC-MAN
-function gamePacman() {
-  const MAZE = [
-    "###################",
-    "#........#........#",
-    "#.##.###.#.###.##.#",
-    "#.................#",
-    "#.##.#.#####.#.##.#",
-    "#....#...#...#....#",
-    "####.###.#.###.####",
-    "####.#.......#.####",
-    "####.#.#####.#.####",
-    "#........#........#",
-    "####.#.#####.#.####",
-    "####.#.......#.####",
-    "####.###.#.###.####",
-    "#........#........#",
-    "#.##.###.#.###.##.#",
-    "#o...............o#",
-    "###################",
-  ];
-  const R = MAZE.length, C = MAZE[0].length, CELL = 15, TOP = 20;
-  let cells, pac, ghosts, score, lives, over, won, paused, frightened, mouth, grace;
-  const wall = (c, r) => r < 0 || r >= R || c < 0 || c >= C || cells[r][c] === "#";
-  const reset = (full) => {
-    cells = MAZE.map(row => row.split(""));
-    pac = { c: 9, r: 15, x: 9, y: 15, d: [0, 0], want: [0, 0] };
-    ghosts = [[9, 3], [9, 7], [4, 9], [14, 9]].map(([c, r], i) => ({
-      c, r, x: c, y: r, d: [0, -1], hue: [0, 320, 186, 32][i], home: [c, r],
-    }));
-    if (full) { score = 0; lives = 3; }
-    over = false; won = false; paused = false; frightened = 0; mouth = 0;
-    // Nothing chases for a moment, and each ghost leaves later than the
-    // one before it. Without this they all converge on the start square
-    // at once and take three lives in about four seconds, which is not a
-    // game -- it was why this was unplayable rather than merely hard.
-    grace = 2.6;
-    ghosts.forEach((g, i) => { g.wait = i * 1.6; });
+// ---------------------------------------------------------------- ASTEROIDS
+function gameAsteroids() {
+  const W = 320, H = 340, TOP = 20;
+  let ship, rocks, shots, score, lives, wave, over, paused, grace, blink;
+
+  const wrap = o => {
+    if (o.x < 0) o.x += W; if (o.x > W) o.x -= W;
+    if (o.y < TOP) o.y += H - TOP; if (o.y > H) o.y -= H - TOP;
   };
-  reset(true);
-  const centred = o => Math.abs(o.x - o.c) < 0.02 && Math.abs(o.y - o.r) < 0.02;
-  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  // A rock is a ring of radii, jittered once and kept -- so each one has
+  // its own silhouette and turns as a solid thing rather than shimmering.
+  const makeRock = (x, y, size) => {
+    const pts = [], n = 9 + ((Math.random() * 4) | 0);
+    for (let i = 0; i < n; i++) pts.push(0.68 + Math.random() * 0.46);
+    const sp = (4 - size) * 16 + 14;
+    const a = Math.random() * Math.PI * 2;
+    return { x, y, size, pts,
+             vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+             rot: Math.random() * 6, spin: (Math.random() - 0.5) * 1.6,
+             r: size * 11 };
+  };
+  const spawnWave = () => {
+    rocks = [];
+    const n = 3 + wave;
+    for (let i = 0; i < n; i++) {
+      // never on top of the ship: a wave that opens by killing you is
+      // a wave that opens by killing you is a fault, not difficulty
+      let x, y, d;
+      do { x = Math.random() * W; y = TOP + Math.random() * (H - TOP);
+           d = Math.hypot(x - W / 2, y - (TOP + H) / 2); } while (d < 90);
+      rocks.push(makeRock(x, y, 3));
+    }
+  };
+  const reset = full => {
+    ship = { x: W / 2, y: (TOP + H) / 2, a: -Math.PI / 2, vx: 0, vy: 0, th: 0 };
+    shots = [];
+    if (full) { score = 0; lives = 3; wave = 0; }
+    over = false; paused = false; grace = 1.6; blink = 0;
+    spawnWave();
+  };
+  wave = 0; reset(true);
+
+  const die = () => {
+    lives--;
+    if (lives <= 0) { over = true; return; }
+    ship = { x: W / 2, y: (TOP + H) / 2, a: -Math.PI / 2, vx: 0, vy: 0, th: 0 };
+    grace = 1.8;
+  };
 
   return {
-    w: C * CELL, h: TOP + R * CELL,
-    get paused() { return paused || over || won; },
+    w: W, h: H,
+    get paused() { return paused || over; },
     step(dt) {
-      const SP = 4.6;
-      frightened = Math.max(0, frightened - dt);
-      grace = Math.max(0, (grace || 0) - dt);
-      if (centred(pac)) {
-        pac.x = pac.c; pac.y = pac.r;
-        if (!wall(pac.c + pac.want[0], pac.r + pac.want[1])) pac.d = pac.want.slice();
-        if (wall(pac.c + pac.d[0], pac.r + pac.d[1])) pac.d = [0, 0];
-        const ch = cells[pac.r][pac.c];
-        if (ch === ".") { cells[pac.r][pac.c] = " "; score += 10; }
-        else if (ch === "o") { cells[pac.r][pac.c] = " "; score += 50; frightened = 7; }
-        if (!cells.some(row => row.includes(".") || row.includes("o"))) won = true;
+      grace = Math.max(0, grace - dt);
+      blink += dt;
+      if (ship.turn) ship.a += ship.turn * 3.4 * dt;
+      if (ship.th > 0) {
+        ship.vx += Math.cos(ship.a) * 210 * dt;
+        ship.vy += Math.sin(ship.a) * 210 * dt;
+        ship.th -= dt;
       }
-      pac.x += pac.d[0] * SP * dt; pac.y += pac.d[1] * SP * dt;
-      if (pac.x < -0.5) { pac.x = C - 0.5; pac.c = C - 1; }
-      if (pac.x > C - 0.5) { pac.x = -0.5; pac.c = 0; }
-      pac.c = Math.round(pac.x); pac.r = Math.round(pac.y);
-      mouth += dt * 9;
+      const drag = Math.pow(0.55, dt);
+      ship.vx *= drag; ship.vy *= drag;
+      ship.x += ship.vx * dt; ship.y += ship.vy * dt; wrap(ship);
 
-      ghosts.forEach(g => {
-        g.wait = Math.max(0, (g.wait || 0) - dt);
-        if (g.wait > 0) return;                    // still in the pen
-        const gs = frightened ? 2.6 : 3.5;
-        if (centred(g)) {
-          g.x = g.c; g.y = g.r;
-          // greedy chase, never reversing unless it is the only way out
-          const opts = dirs.filter(d => !wall(g.c + d[0], g.r + d[1]) &&
-            !(d[0] === -g.d[0] && d[1] === -g.d[1]));
-          const pick = (opts.length ? opts : dirs.filter(d => !wall(g.c + d[0], g.r + d[1])))
-            .map(d => ({
-              d, s: grace > 0
-                ? Math.random()                    // wandering, not hunting
-                : Math.hypot(g.c + d[0] - pac.c, g.r + d[1] - pac.r) *
-                  (frightened ? -1 : 1) + Math.random() * 0.6,
-            })).sort((a, b) => a.s - b.s)[0];
-          if (pick) g.d = pick.d;
-        }
-        g.x += g.d[0] * gs * dt; g.y += g.d[1] * gs * dt;
-        g.c = Math.round(g.x); g.r = Math.round(g.y);
-        if (grace <= 0 && Math.hypot(g.x - pac.x, g.y - pac.y) < 0.62) {
-          if (frightened) { score += 200; g.c = g.home[0]; g.r = g.home[1]; g.x = g.c; g.y = g.r; }
-          else {
-            lives--;
-            if (lives <= 0) over = true;
-            else {
-              pac.c = 9; pac.r = 15; pac.x = 9; pac.y = 15; pac.d = [0, 0]; pac.want = [0, 0];
-              ghosts.forEach((h, i) => {
-                h.c = h.home[0]; h.r = h.home[1]; h.x = h.c; h.y = h.r;
-                h.wait = i * 1.2;
-              });
-              grace = 2.4;
-            }
-          }
-        }
+      shots.forEach(s => { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; wrap(s); });
+      shots = shots.filter(s => s.life > 0);
+
+      rocks.forEach(r => {
+        r.x += r.vx * dt; r.y += r.vy * dt; r.rot += r.spin * dt; wrap(r);
       });
+
+      // shots against rocks: a hit splits the rock rather than removing it
+      for (let i = rocks.length - 1; i >= 0; i--) {
+        const r = rocks[i];
+        for (let j = shots.length - 1; j >= 0; j--) {
+          if (Math.hypot(r.x - shots[j].x, r.y - shots[j].y) > r.r) continue;
+          shots.splice(j, 1);
+          rocks.splice(i, 1);
+          score += (4 - r.size) * 20;
+          if (r.size > 1) for (let k = 0; k < 2; k++)
+            rocks.push(makeRock(r.x, r.y, r.size - 1));
+          break;
+        }
+      }
+      if (!rocks.length) { wave++; grace = 1.6; spawnWave(); }
+
+      if (grace <= 0) {
+        for (const r of rocks) {
+          if (Math.hypot(r.x - ship.x, r.y - ship.y) < r.r + 7) { die(); break; }
+        }
+      }
     },
     key(k) {
-      if (over || won) { if (k === "Enter" || k === " ") { reset(true); return true; } return false; }
+      if (over) { if (k === "Enter" || k === " ") { wave = 0; reset(true); return true; } return false; }
       if (k === "p" || k === "P") { paused = !paused; return true; }
       if (paused) return false;
-      const m = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
-      if (m) { pac.want = m; return true; }
+      if (k === "ArrowLeft") { ship.a -= 0.34; return true; }
+      if (k === "ArrowRight") { ship.a += 0.34; return true; }
+      if (k === "ArrowUp") { ship.th = 0.22; return true; }
+      if (k === " ") {
+        if (shots.length < 5)
+          shots.push({ x: ship.x + Math.cos(ship.a) * 10,
+                       y: ship.y + Math.sin(ship.a) * 10,
+                       vx: ship.vx + Math.cos(ship.a) * 330,
+                       vy: ship.vy + Math.sin(ship.a) * 330, life: 1.1 });
+        return true;
+      }
       return false;
     },
     draw(x) {
-      const W = this.w, H = this.h;
       const ink = themeRGB("--c41", "235,250,250");
       const acc = themeRGB("--c22", "111,229,214");
       const dim = themeRGB("--c39", "230,255,240");
       x.fillStyle = dim; x.font = '600 9px "SF Mono",Menlo,monospace';
-      x.fillText("SCORE " + score, 8, 13);
-      x.fillText("●".repeat(Math.max(0, lives)), W - 40, 13);
-      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
-        const X = c * CELL, Y = TOP + r * CELL, ch = cells[r][c];
-        if (ch === "#") {
-          // Full cells, so neighbouring walls MERGE into corridors. Inset
-          // squares left a gap around every one, which read as a field of
-          // loose blocks rather than a maze you can find your way through.
-          x.fillStyle = `rgba(${acc},0.26)`;
-          x.fillRect(X, Y, CELL + 0.5, CELL + 0.5);
-          x.strokeStyle = `rgba(${acc},0.5)`; x.lineWidth = 1;
-          x.strokeRect(X + 0.5, Y + 0.5, CELL - 1, CELL - 1);
-        } else if (ch === ".") {
-          x.fillStyle = dim;
-          x.fillRect(X + CELL / 2 - 1.5, Y + CELL / 2 - 1.5, 3, 3);
-        } else if (ch === "o") {
-          x.fillStyle = ink; x.beginPath();
-          x.arc(X + CELL / 2, Y + CELL / 2, 4.5, 0, 7); x.fill();
-        }
-      }
-      const px = pac.x * CELL + CELL / 2, py = TOP + pac.y * CELL + CELL / 2;
-      const open = 0.06 + Math.abs(Math.sin(mouth)) * 0.30;
-      const ang = Math.atan2(pac.d[1], pac.d[0]);
-      x.fillStyle = "hsl(48 92% 60%)"; x.beginPath();
-      x.moveTo(px, py);
-      x.arc(px, py, CELL * 0.46, ang + open * Math.PI, ang - open * Math.PI);
-      x.closePath(); x.fill();
-      ghosts.forEach(g => {
-        const gx = g.x * CELL + CELL / 2, gy = TOP + g.y * CELL + CELL / 2, rr = CELL * 0.44;
-        x.fillStyle = frightened
-          ? (frightened < 2 && ((frightened * 6) | 0) % 2 ? "#ffffff" : "hsl(230 70% 58%)")
-          : `hsl(${g.hue} 74% 62%)`;
+      x.fillText("SCORE " + score, 10, 14);
+      x.fillText("WAVE " + (wave + 1), W / 2 - 22, 14);
+      x.fillText("▲".repeat(Math.max(0, lives)), W - 56, 14);
+
+      x.strokeStyle = acc; x.lineWidth = 1.4; x.lineJoin = "round";
+      rocks.forEach(r => {
+        x.save(); x.translate(r.x, r.y); x.rotate(r.rot);
         x.beginPath();
-        x.arc(gx, gy - 1, rr, Math.PI, 0);
-        x.lineTo(gx + rr, gy + rr * 0.8);
-        for (let i = 0; i < 3; i++)
-          x.lineTo(gx + rr - (i * 2 + 1) * rr / 3, gy + rr * (i % 2 ? 0.8 : 0.4));
-        x.lineTo(gx - rr, gy + rr * 0.8);
-        x.closePath(); x.fill();
-        x.fillStyle = "#fff";
-        x.beginPath(); x.arc(gx - rr * 0.34, gy - rr * 0.2, rr * 0.26, 0, 7); x.fill();
-        x.beginPath(); x.arc(gx + rr * 0.34, gy - rr * 0.2, rr * 0.26, 0, 7); x.fill();
+        r.pts.forEach((p, i) => {
+          const a = (i / r.pts.length) * Math.PI * 2;
+          const px = Math.cos(a) * r.r * p, py = Math.sin(a) * r.r * p;
+          i ? x.lineTo(px, py) : x.moveTo(px, py);
+        });
+        x.closePath(); x.stroke(); x.restore();
       });
-      if (grace > 0 && !over && !won && !paused) {
-        x.fillStyle = ink; x.textAlign = "center";
-        x.font = '700 15px -apple-system,sans-serif';
-        x.fillText(`READY  ${grace.toFixed(1)}`, W / 2, TOP + R * CELL * 0.42);
-        x.textAlign = "left";
+
+      x.fillStyle = ink;
+      shots.forEach(s => { x.beginPath(); x.arc(s.x, s.y, 1.8, 0, 7); x.fill(); });
+
+      // the ship blinks while it cannot be hit, so the grace is visible
+      if (!over && (grace <= 0 || ((blink * 8) | 0) % 2)) {
+        x.save(); x.translate(ship.x, ship.y); x.rotate(ship.a);
+        x.strokeStyle = ink; x.lineWidth = 1.6;
+        x.beginPath(); x.moveTo(11, 0); x.lineTo(-8, 7);
+        x.lineTo(-4, 0); x.lineTo(-8, -7); x.closePath(); x.stroke();
+        if (ship.th > 0) {                       // the flame, while thrusting
+          x.strokeStyle = acc; x.beginPath();
+          x.moveTo(-5, 3); x.lineTo(-11 - Math.random() * 5, 0); x.lineTo(-5, -3);
+          x.stroke();
+        }
+        x.restore();
       }
-      if (over || won || paused) {
-        x.fillStyle = "rgba(0,0,0,0.7)"; x.fillRect(0, 0, W, H);
-        x.fillStyle = ink; x.textAlign = "center";
-        x.font = '700 19px -apple-system,sans-serif';
-        x.fillText(over ? "GAME OVER" : won ? "CLEARED" : "PAUSED", W / 2, H / 2 - 4);
+
+      x.fillStyle = dim; x.font = '500 8px "SF Mono",Menlo,monospace';
+      x.textAlign = "center";
+      x.fillText("← → turn · ↑ thrust · space fire · P pause", W / 2, H - 6);
+      if (over || paused) {
+        x.fillStyle = "rgba(0,0,0,0.68)"; x.fillRect(0, 0, W, H);
+        x.fillStyle = ink; x.font = '700 20px -apple-system,sans-serif';
+        x.fillText(over ? "GAME OVER" : "PAUSED", W / 2, H / 2 - 4);
         x.font = '500 11px "SF Mono",Menlo,monospace';
-        x.fillText(over || won ? "press ENTER" : "press P", W / 2, H / 2 + 18);
-        x.textAlign = "left";
+        x.fillText(over ? "press ENTER" : "press P", W / 2, H / 2 + 18);
       }
+      x.textAlign = "left";
     },
   };
 }
 
-const GAME_IMPL = { tetris: gameTetris, invaders: gameInvaders, pacman: gamePacman };
+const GAME_IMPL = { tetris: gameTetris, invaders: gameInvaders, asteroids: gameAsteroids };
 
 function makeShape(kind) {
   const ex = items.find(i => i.type === "shape" && i.skind === kind && i.el.isConnected);
@@ -3307,7 +3301,7 @@ async function runDemo() {
   await sleepD(1200);
 
   // --------------------------------------------------------------- GAMES
-  DEMO.say("Games", "Tetris, Space Invaders and Pac-Man, built for the board");
+  DEMO.say("Games", "Tetris, Space Invaders and Asteroids, built for the board");
   await sleepD(1400);
   const t1 = makeGame("tetris");
   if (t1) { t1.x = W * 0.22; t1.y = H * 0.55; }
@@ -3315,7 +3309,7 @@ async function runDemo() {
   const t2 = makeGame("invaders");
   if (t2) { t2.x = W * 0.46; t2.y = H * 0.55; }
   await sleepD(900);
-  const t3 = makeGame("pacman");
+  const t3 = makeGame("asteroids");
   if (t3) { t3.x = W * 0.70; t3.y = H * 0.56; }
   await sleepD(1500);
   DEMO.say("They are ordinary windows", "Move, scale, rotate and close them like anything else");
@@ -3704,7 +3698,7 @@ const SCENES = {
     wantWidget("terminal", innerWidth * 0.68, innerHeight * 0.55);
   },
   async games() {
-    const g = ["tetris", "invaders", "pacman"].map(k => makeGame(k));
+    const g = ["tetris", "invaders", "asteroids"].map(k => makeGame(k));
     g.forEach((it, i) => { if (it) { it.x = innerWidth * (0.24 + i * 0.26);
                                      it.y = innerHeight * 0.5; } });
   },
@@ -4320,7 +4314,7 @@ function novStation(m) {
     return { orb: "props", body: `${p.dirs} folders · ${p.leaves} props` };
   }
   if (m === "apps") return { orb: "apps", body: "clock · date · weather · news" };
-  if (m === "games") return { orb: "games", body: "tetris · invaders · pac-man" };
+  if (m === "games") return { orb: "games", body: "tetris · invaders · asteroids" };
   if (m === "projects") return { orb: "shapes", body: "live procedural 3D" };
   if (m === "settings") return { orb: null, body: "input & controls" };
   return { orb: null, body: "empty" };
@@ -6826,6 +6820,48 @@ function inGrip(c, x, y) {
 }
 // The rotate handle sits in the opposite corner to the resize one, so
 // the two can never be confused by feel.
+// Windows that hold flowing content resize the way a desktop window
+// does -- real width and height, with the text reflowing. Scaling those
+// stretches the glyphs instead, which is the wrong answer for anything
+// you have to read. Canvas tiles keep the proportional corner, because
+// stretching a game board or a wireframe is worse than not resizing it.
+const EDGE_KINDS = ["panel", "browser"];
+const EDGE = 12;                 // how close to an edge counts as grabbing it
+function edgeAt(c, x, y) {
+  if (!EDGE_KINDS.includes(c.type)) return null;
+  const r = c.el.getBoundingClientRect();
+  if (y > r.bottom - EDGE * 3 && x < r.left + EDGE * 3) return null;  // rotate corner
+  const onE = x > r.right - EDGE && x < r.right + 6;
+  const onS = y > r.bottom - EDGE && y < r.bottom + 6;
+  const inY = y > r.top + EDGE && y < r.bottom + 6;
+  const inX = x > r.left + EDGE && x < r.right + 6;
+  if (onE && onS) return "se";
+  if (onE && inY) return "e";
+  if (onS && inX) return "s";
+  return null;
+}
+const EDGE_CURSOR = { e: "ew-resize", s: "ns-resize", se: "nwse-resize" };
+
+// Grow from the edge you grabbed, keeping the opposite one still. Items
+// are drawn centred on x,y, so the centre has to move by half of
+// whatever the size changed by, or the window walks away under you.
+function sizeBy(c, edge, dw, dh) {
+  const r = c.el.getBoundingClientRect();
+  const sc = c.scale || 1;
+  if (edge === "e" || edge === "se") {
+    const w0 = r.width / sc;
+    const w = Math.max(300, Math.min(2200, w0 + dw / sc));
+    c.el.style.width = w + "px";
+    c.x += ((w - w0) * sc) / 2;
+  }
+  if (edge === "s" || edge === "se") {
+    const h0 = r.height / sc;
+    const h = Math.max(220, Math.min(1800, h0 + dh / sc));
+    c.el.style.height = h + "px";
+    c.y += ((h - h0) * sc) / 2;
+  }
+}
+
 function inRotGrip(c, x, y) {
   if (c.type === "orb" || c.type === "widget") return false;
   const r = c.el.getBoundingClientRect();
@@ -6898,6 +6934,12 @@ addEventListener("mousedown", e => {
   }
   if (e.button !== 0) return;
 
+  const edge = edgeAt(c, x, y);
+  if (edge) {                                // AN EDGE = resize that way
+    mDrag = { c, cur, kind: "size", edge, lx: x, ly: y };
+    c.el.classList.add("grabbed");
+    return;
+  }
   if (inRotGrip(c, x, y)) {                  // BOTTOM-LEFT = spin in place
     // This handle rotates by the ANGLE you drag around the item's own
     // centre, the way a design tool's rotate handle does, so a slow
@@ -6923,15 +6965,18 @@ addEventListener("mousemove", e => {
   const x = e.clientX, y = e.clientY;
   if (!mDrag) {                            // idle: hint what the corner does
     const c = hitTest({ x, y });
-    const onGrip = !!c && inGrip(c, x, y);
-    const onRot = !!c && !onGrip && inRotGrip(c, x, y);
+    const onEdge = c ? edgeAt(c, x, y) : null;
+    const onGrip = !!c && !onEdge && inGrip(c, x, y);
+    const onRot = !!c && !onEdge && !onGrip && inRotGrip(c, x, y);
     if (gripEl && gripEl !== (c && c.el))
-      gripEl.classList.remove("gripping", "rotgrip");
-    gripEl = (onGrip || onRot) ? c.el : null;
+      gripEl.classList.remove("gripping", "rotgrip", "edge-e", "edge-s", "edge-se");
+    if (c) c.el.classList.remove("edge-e", "edge-s", "edge-se");
+    if (c && onEdge) c.el.classList.add("edge-" + onEdge);
+    gripEl = (onGrip || onRot || onEdge) ? c.el : null;
     if (c) c.el.classList.toggle("gripping", onGrip);
     if (c) c.el.classList.toggle("rotgrip", onRot);
-    document.body.style.cursor =
-      onGrip ? "nwse-resize" : onRot ? "crosshair" : c ? "grab" : "";
+    document.body.style.cursor = onEdge ? EDGE_CURSOR[onEdge]
+      : onGrip ? "nwse-resize" : onRot ? "crosshair" : c ? "grab" : "";
     return;
   }
   const { c, cur } = mDrag;
@@ -6941,6 +6986,11 @@ addEventListener("mousemove", e => {
     const ROT = TUNE.rotGain * (e.shiftKey ? TUNE.rotFine : 1);
     setRot(c, mDrag.r0x + (y - mDrag.y0) * ROT,
               mDrag.r0y + (x - mDrag.x0) * ROT, c.rz || 0);
+    return;
+  }
+  if (mDrag.kind === "size") {
+    sizeBy(c, mDrag.edge, x - mDrag.lx, y - mDrag.ly);
+    mDrag.lx = x; mDrag.ly = y;
     return;
   }
   if (mDrag.kind === "roll") {
@@ -6987,6 +7037,9 @@ addEventListener("mouseup", e => {
       // let the ease finish, THEN hand the item back to its own idle
       setTimeout(() => { c.trot = null; }, 420);
     }
+  } else if (kind === "size") {
+    c.el.classList.remove("grabbed");
+    if (c.isCfg) saveCfgPos(c);
   } else if (kind === "resize") {
     c.el.classList.remove("grabbed");
     c.el.classList.remove("gripping"); gripEl = null;
