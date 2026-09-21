@@ -848,6 +848,7 @@ const TUNE = {
   newsPace:      8,      // seconds per headline in the ticker. Paced by
                          // how many there are, so a long run does not
                          // become a blur and a short one a crawl.
+  termPace:      420,    // ms per line in the terminal stream
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
   menuScale:     0.5,    // the CENTRE ring only. The stations around it
@@ -3443,14 +3444,19 @@ function drawTerminal(cv, st, now) {
     .getPropertyValue("--c22").trim()) || "111,229,214";
   const LH = 15, PAD = 14, TOP = 30;
 
-  // advance the stream
-  if (now - st.last > st.rate) {
-    st.last = now;
+  // Advance the stream. The clock steps by a fixed interval rather than
+  // being reset to now: resetting quantises every step to whenever a
+  // frame happened to land, so the gaps between lines were never equal
+  // and the stream stuttered even when the scroll itself was right.
+  st.rate = TUNE.termPace;
+  if (!st.last) st.last = now;
+  while (now - st.last > st.rate) {
+    st.last += st.rate;
     st.lines.push(termLine());
     if (st.lines.length > 60) st.lines.shift();
-    st.off += LH;
   }
-  const slide = Math.min(LH, (now - st.last) / st.rate * LH);
+  if (now - st.last > st.rate * 4) st.last = now;   // came back from a stall
+  const slide = Math.min(LH, ((now - st.last) / st.rate) * LH);
 
   // frame and header
   x.strokeStyle = `rgba(${acc},0.5)`; x.lineWidth = 1;
@@ -3476,7 +3482,12 @@ function drawTerminal(cv, st, now) {
   // the stream, rising
   x.save();
   x.beginPath(); x.rect(PAD, TOP - 4, W - PAD * 2, H - TOP - 12); x.clip();
-  let y = H - 14 + slide;
+  // The newest line enters from BELOW the window and rises into place,
+  // which is what makes the motion continuous. It used to be
+  // `H - 14 + slide`, so the stack drifted DOWNWARD through the interval
+  // and then snapped back up by a whole line the moment one was added --
+  // the wrong direction and a jump, once every step.
+  let y = H - 14 + LH - slide;
   for (let i = st.lines.length - 1; i >= 0 && y > TOP - LH; i--, y -= LH) {
     const L = st.lines[i];
     const age = Math.min(1, (H - 14 - y) / (H - TOP));
@@ -4074,7 +4085,7 @@ function paintWidget(w) {
       cv.width = 760; cv.height = 520;
       cv.style.width = "380px"; cv.style.height = "260px";
       box.appendChild(cv);
-      w.term = { cv, lines: [], off: 0, last: 0, rate: 260 };
+      w.term = { cv, lines: [], off: 0, last: 0, rate: TUNE.termPace };
       for (let k = 0; k < 24; k++) w.term.lines.push(termLine());
       // its own loop: the widget repaint is once a second, and a stream
       // that moves once a second is a slideshow
