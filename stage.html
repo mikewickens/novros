@@ -861,6 +861,10 @@ const TUNE = {
   termPace:      420,    // ms per line in the terminal stream
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
+  holoLines:     58,     // scanlines ruled across a hologram's height
+  holoLineMix:   0.62,   // how strongly they cut into it. 0 = none.
+  holoBaseA:     0.17,   // how solid its interior is. Lower sees through.
+  holoRim:       0.85,   // how hard the silhouette edge burns
   holoGlow:      0.45,   // how hot the hologram burns
   holoSpread:    1.05,   // how far its light spreads. High values suit a
                          // wireframe sketch and drown a solid character.
@@ -1499,6 +1503,16 @@ function renderModelScene(sc) {
     // phase so the tracker and the OBS overlay pulse in sync.
     sc.ghostMat.uniforms.uBeam.value =
       ((Date.now() % 6000) / 6000) * sc.ghostMat.beamSpan;
+  if (sc.ghostMat) {
+    // The look is driven from TUNE every frame, not baked in when the
+    // model loads -- so it can be dialled against the thing on screen
+    // instead of guessed and reloaded.
+    const u = sc.ghostMat.uniforms;
+    u.baseA.value = TUNE.holoBaseA;
+    u.uLines.value = TUNE.holoLines;
+    u.uLineMix.value = TUNE.holoLineMix;
+    u.rimA.value = TUNE.holoRim;
+  }
   if (!p) { r.render(sc.scene, sc.camera); return; }
   r.setRenderTarget(p.rtScene); r.render(sc.scene, sc.camera);
   const bu = p.blurQ.m.uniforms;
@@ -1677,8 +1691,9 @@ async function buildModelScene(el, src, mm, lift) {
         uniforms: {
           cBase: { value: new THREE.Color(0.40, 0.75, 0.71) },
           cRim:  { value: new THREE.Color(0.75, 1.0, 0.96) },
-          rimPow: { value: 3.2 }, baseA: { value: 0.12 },
+          rimPow: { value: 3.2 }, baseA: { value: TUNE.holoBaseA },
           rimA: { value: 0.8 }, boost: { value: 1.4 },
+          uLines: { value: TUNE.holoLines }, uLineMix: { value: TUNE.holoLineMix },
           uBeam: { value: 0.0 }, uBeamW: { value: 0.0375 },
           uSpan: { value: Math.max(bsz.y * fit, 0.2) },
         },
@@ -1703,6 +1718,7 @@ async function buildModelScene(el, src, mm, lift) {
           uniform float rimPow; uniform float baseA;
           uniform float rimA; uniform float boost;
           uniform float uBeam; uniform float uBeamW; uniform float uSpan;
+          uniform float uLines; uniform float uLineMix;
           varying vec3 vN; varying vec3 vV; varying float vWy;
           void main() {
             float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), rimPow);
@@ -1719,6 +1735,20 @@ async function buildModelScene(el, src, mm, lift) {
             float b = exp(-pow(d / uBeamW, 2.0));
             col += cRim * b * (0.3 + f * 0.7);
             a = clamp(a + b * 0.16, 0.0, 1.0);
+            // THE SCANLINES. A wireframe was tried here and rejected --
+            // a dense mesh has far too many triangles and reads as soup.
+            // Banding gives the same broadcast-hologram language without
+            // depending on the geometry at all: it is ruled across the
+            // model's own height, so it holds up on a character as well
+            // as on a six-vertex sketch.
+            float ln = 0.5 + 0.5 * sin((y / uSpan) * uLines * 6.2831853);
+            ln = pow(ln, 1.6);
+            // Banding belongs mostly in the COLOUR. Cutting alpha this
+            // hard as well took her from a solid glow to a faint wisp:
+            // the interior alpha is small to begin with, so a further
+            // 0.45x through the dark half of every line erased her.
+            col *= mix(1.0, 0.55 + 0.7 * ln, uLineMix);
+            a *= mix(1.0, 0.82 + 0.3 * ln, uLineMix);
             gl_FragColor = vec4(col, a);
           }`,
         transparent: true, depthWrite: false, side: THREE.DoubleSide });
