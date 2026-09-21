@@ -74,6 +74,24 @@ Drop images, props and 3D models into `media/`, and backgrounds into
 `media/backgrounds/`. Only files inside `media/` can ever reach the
 board — that jail is a safety feature.
 
+### Backgrounds
+
+The repo ships no wallpapers: Apple's desktop pictures are Apple's, and
+this fork has no licence to redistribute them. But every Mac already has
+them, so there is nothing to redistribute — one command converts your own
+copies into something the board can use:
+
+```bash
+./bin/get-backgrounds.sh
+```
+
+That lifts ~150 wallpapers out of `/System/Library/Desktop Pictures`,
+converts them from HEIC (which Chrome cannot decode) to JPEG with `sips`,
+and drops them in `media/backgrounds/`. Nothing to install. Press **R** on
+the board, then **Settings → Background**.
+
+Any `.jpg`, `.png` or `.webp` you put in that folder works just as well.
+
 ---
 
 ## Everything else
