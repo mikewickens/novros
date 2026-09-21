@@ -2876,7 +2876,7 @@ function gamePacman() {
     "###################",
   ];
   const R = MAZE.length, C = MAZE[0].length, CELL = 15, TOP = 20;
-  let cells, pac, ghosts, score, lives, over, won, paused, frightened, mouth;
+  let cells, pac, ghosts, score, lives, over, won, paused, frightened, mouth, grace;
   const wall = (c, r) => r < 0 || r >= R || c < 0 || c >= C || cells[r][c] === "#";
   const reset = (full) => {
     cells = MAZE.map(row => row.split(""));
@@ -2886,6 +2886,12 @@ function gamePacman() {
     }));
     if (full) { score = 0; lives = 3; }
     over = false; won = false; paused = false; frightened = 0; mouth = 0;
+    // Nothing chases for a moment, and each ghost leaves later than the
+    // one before it. Without this they all converge on the start square
+    // at once and take three lives in about four seconds, which is not a
+    // game -- it was why this was unplayable rather than merely hard.
+    grace = 2.6;
+    ghosts.forEach((g, i) => { g.wait = i * 1.6; });
   };
   reset(true);
   const centred = o => Math.abs(o.x - o.c) < 0.02 && Math.abs(o.y - o.r) < 0.02;
@@ -2897,6 +2903,7 @@ function gamePacman() {
     step(dt) {
       const SP = 4.6;
       frightened = Math.max(0, frightened - dt);
+      grace = Math.max(0, (grace || 0) - dt);
       if (centred(pac)) {
         pac.x = pac.c; pac.y = pac.r;
         if (!wall(pac.c + pac.want[0], pac.r + pac.want[1])) pac.d = pac.want.slice();
@@ -2913,7 +2920,9 @@ function gamePacman() {
       mouth += dt * 9;
 
       ghosts.forEach(g => {
-        const gs = frightened ? 2.6 : 3.7;
+        g.wait = Math.max(0, (g.wait || 0) - dt);
+        if (g.wait > 0) return;                    // still in the pen
+        const gs = frightened ? 2.6 : 3.5;
         if (centred(g)) {
           g.x = g.c; g.y = g.r;
           // greedy chase, never reversing unless it is the only way out
@@ -2921,21 +2930,27 @@ function gamePacman() {
             !(d[0] === -g.d[0] && d[1] === -g.d[1]));
           const pick = (opts.length ? opts : dirs.filter(d => !wall(g.c + d[0], g.r + d[1])))
             .map(d => ({
-              d, s: Math.hypot(g.c + d[0] - pac.c, g.r + d[1] - pac.r) *
-                   (frightened ? -1 : 1) + Math.random() * 0.6,
+              d, s: grace > 0
+                ? Math.random()                    // wandering, not hunting
+                : Math.hypot(g.c + d[0] - pac.c, g.r + d[1] - pac.r) *
+                  (frightened ? -1 : 1) + Math.random() * 0.6,
             })).sort((a, b) => a.s - b.s)[0];
           if (pick) g.d = pick.d;
         }
         g.x += g.d[0] * gs * dt; g.y += g.d[1] * gs * dt;
         g.c = Math.round(g.x); g.r = Math.round(g.y);
-        if (Math.hypot(g.x - pac.x, g.y - pac.y) < 0.62) {
+        if (grace <= 0 && Math.hypot(g.x - pac.x, g.y - pac.y) < 0.62) {
           if (frightened) { score += 200; g.c = g.home[0]; g.r = g.home[1]; g.x = g.c; g.y = g.r; }
           else {
             lives--;
             if (lives <= 0) over = true;
             else {
               pac.c = 9; pac.r = 15; pac.x = 9; pac.y = 15; pac.d = [0, 0]; pac.want = [0, 0];
-              ghosts.forEach(h => { h.c = h.home[0]; h.r = h.home[1]; h.x = h.c; h.y = h.r; });
+              ghosts.forEach((h, i) => {
+                h.c = h.home[0]; h.r = h.home[1]; h.x = h.c; h.y = h.r;
+                h.wait = i * 1.2;
+              });
+              grace = 2.4;
             }
           }
         }
@@ -2960,9 +2975,13 @@ function gamePacman() {
       for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
         const X = c * CELL, Y = TOP + r * CELL, ch = cells[r][c];
         if (ch === "#") {
-          x.fillStyle = `rgba(${getComputedStyle(document.documentElement)
-            .getPropertyValue("--c22").trim() || "111,229,214"},0.30)`;
-          x.fillRect(X + 1.5, Y + 1.5, CELL - 3, CELL - 3);
+          // Full cells, so neighbouring walls MERGE into corridors. Inset
+          // squares left a gap around every one, which read as a field of
+          // loose blocks rather than a maze you can find your way through.
+          x.fillStyle = `rgba(${acc},0.26)`;
+          x.fillRect(X, Y, CELL + 0.5, CELL + 0.5);
+          x.strokeStyle = `rgba(${acc},0.5)`; x.lineWidth = 1;
+          x.strokeRect(X + 0.5, Y + 0.5, CELL - 1, CELL - 1);
         } else if (ch === ".") {
           x.fillStyle = dim;
           x.fillRect(X + CELL / 2 - 1.5, Y + CELL / 2 - 1.5, 3, 3);
@@ -2994,6 +3013,12 @@ function gamePacman() {
         x.beginPath(); x.arc(gx - rr * 0.34, gy - rr * 0.2, rr * 0.26, 0, 7); x.fill();
         x.beginPath(); x.arc(gx + rr * 0.34, gy - rr * 0.2, rr * 0.26, 0, 7); x.fill();
       });
+      if (grace > 0 && !over && !won && !paused) {
+        x.fillStyle = ink; x.textAlign = "center";
+        x.font = '700 15px -apple-system,sans-serif';
+        x.fillText(`READY  ${grace.toFixed(1)}`, W / 2, TOP + R * CELL * 0.42);
+        x.textAlign = "left";
+      }
       if (over || won || paused) {
         x.fillStyle = "rgba(0,0,0,0.7)"; x.fillRect(0, 0, W, H);
         x.fillStyle = ink; x.textAlign = "center";
