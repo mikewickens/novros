@@ -3078,8 +3078,10 @@ addEventListener("mousedown", e => {
 // ============================================================
 const DEMO = {
   on: false, stop: false,
+  pace: parseFloat(Q.get("pace")) || 1.6,
 
   say(title, sub, ms = 3200) {
+    ms *= this.pace;
     const c = document.getElementById("demoCap");
     if (!c) return;
     c.innerHTML = `<div class="dt">${escT(title)}</div>` +
@@ -3121,6 +3123,7 @@ const DEMO = {
   // loop, the step finishes and the tour moves on.
   tween(ms, fn) {
     return new Promise(res => {
+      ms *= DEMO.pace;
       const t0 = performance.now();
       let raf = 0, done = false;
       const finish = () => {
@@ -3170,7 +3173,10 @@ const DEMO = {
     await sleepD(650);
   },
 };
-const sleepD = ms => new Promise(r => setTimeout(r, ms));
+// One dial paces the whole tour. Every wait and every glide runs
+// through it, so the choreography keeps its shape and only its speed
+// changes -- ?pace=1 for the original, higher for a calmer read.
+const sleepD = ms => new Promise(r => setTimeout(r, ms * DEMO.pace));
 
 async function runDemo() {
   DEMO.on = true;
