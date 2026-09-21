@@ -3768,6 +3768,8 @@ if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
   window.makeGame = k => makeGame(k);
   window.makeShape = k => makeShape(k);
+  window.makeModel = (src, t, mode, lift) => makeModel(src, t, mode, lift);
+  window.items = () => items;
   window.toggleWidget = (k, x, y) => toggleWidget(k, x, y);
   window.runDemo = () => runDemo();
   window.spawnStage = (a, b) => spawnStage(a, b);

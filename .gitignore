@@ -11,3 +11,7 @@ media/backgrounds/
 classic.html
 NOVROS-demo.mp4
 NOVROS-settings-*.png
+# Mixamo characters are Adobe's; use them, do not redistribute them
+media/holo/*.glb
+media/models/*.glb
+media/models/*.fbx
