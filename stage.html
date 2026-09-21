@@ -861,6 +861,9 @@ const TUNE = {
   termPace:      420,    // ms per line in the terminal stream
   scrollGain:    1.6,    // content travel per unit of hand travel
   twoFingerScroll: true, // index + middle out = scroll, like a trackpad
+  holoGlow:      0.45,   // how hot the hologram burns
+  holoSpread:    1.05,   // how far its light spreads. High values suit a
+                         // wireframe sketch and drown a solid character.
   menuScale:     0.5,    // the CENTRE ring only. The stations around it
                          // keep their own size and simply close in.
   // --- the system hand ---
@@ -1748,8 +1751,14 @@ async function buildModelScene(el, src, mm, lift) {
       if (nLift && ROLE !== "render")
         toast(`glow lift: ${nLift} material${nLift > 1 ? "s" : ""}`, 1800);
     }
+    // The holo bloom was fitted to small wireframe sketches, which is
+    // what this mode was built for. A full character is a solid
+    // silhouette instead of a few lines, so the same spread fills the
+    // whole body and reads as a white cloud around her rather than a
+    // rim of light. Tighter by default, and dialable.
     const post = mm === "holo"
-      ? buildBloomRig(THREE, renderer, { k: 0.85, sat: 1.0, spread: 2.2 })
+      ? buildBloomRig(THREE, renderer,
+          { k: TUNE.holoGlow, sat: 1.0, spread: TUNE.holoSpread })
       : nLift ? buildBloomRig(THREE, renderer, { k: 2.2, sat: 2.6, spread: 2.6 })
       : null;
     return { renderer, scene, camera, group, canvas, mixer, post, THREE, ghostMat,
@@ -3770,6 +3779,8 @@ if (typeof window !== "undefined") {
   window.makeShape = k => makeShape(k);
   window.makeModel = (src, t, mode, lift) => makeModel(src, t, mode, lift);
   window.items = () => items;
+  window.saveWidgets = () => saveWidgets();
+  window.restoreWidgets = () => restoreWidgets();
   window.toggleWidget = (k, x, y) => toggleWidget(k, x, y);
   window.runDemo = () => runDemo();
   window.spawnStage = (a, b) => spawnStage(a, b);
@@ -4019,7 +4030,11 @@ function widgetState() {
 }
 // Widgets, wireframes and games all persist: they are all windows you
 // arranged, and "where I left it" should not depend on which kind it was.
-const LAYOUT_KINDS = { wdg: "wkind", shape: "skind", game: "gkind" };
+// A staged model is a window you arranged too, so it comes back with
+// the rest. It is keyed by its source path rather than a kind name,
+// because that is what identifies it.
+const LAYOUT_KINDS = { wdg: "wkind", shape: "skind", game: "gkind", model: null };
+const inLayout = c => c && Object.prototype.hasOwnProperty.call(LAYOUT_KINDS, c.type);
 // The settings panel is not part of the saved layout -- it is not a
 // window you keep -- but WHERE you put it is worth keeping.
 function saveCfgPos(c) {
@@ -4032,8 +4047,10 @@ function saveCfgPos(c) {
 
 function saveWidgets() {
   const live = items
-    .filter(i => LAYOUT_KINDS[i.type] && i.el.isConnected)
-    .map(i => ({ t: i.type, k: i[LAYOUT_KINDS[i.type]],
+    .filter(i => inLayout(i) && i.el.isConnected)
+    .map(i => ({ t: i.type,
+                 k: i.type === "model" ? i.def.src : i[LAYOUT_KINDS[i.type]],
+                 ttl: i.type === "model" ? (i.def.title || "") : undefined,
                  x: +(i.x / innerWidth).toFixed(4),
                  y: +(i.y / innerHeight).toFixed(4),
                  s: +(i.scale || 1).toFixed(3),
@@ -4073,11 +4090,11 @@ function restoreWidgets() {
   // still isConnected a moment later -- and rebuilding over that gave
   // two of every window. Restoring a layout has to start from nothing.
   const state = widgetState();
-  items.filter(i => LAYOUT_KINDS[i.type]).forEach(i => {
+  items.filter(i => inLayout(i)).forEach(i => {
     i.grabbedBy = []; i.anim = null;
     if (i.el) i.el.remove();
   });
-  items = items.filter(i => !LAYOUT_KINDS[i.type]);
+  items = items.filter(i => !inLayout(i));
   state.forEach(st => {
     const t = st.t || "wdg";            // entries saved before this knew only widgets
     let w = null;
@@ -4086,6 +4103,11 @@ function restoreWidgets() {
       w.anim = { k: "in", t: 0 }; w.el.style.opacity = "0.05";
     } else if (t === "shape" && SHAPES[st.k]) w = makeShape(st.k);
     else if (t === "game" && GAME_KINDS[st.k]) w = makeGame(st.k);
+    else if (t === "model" && st.k) {
+      w = makeModel(st.k, st.ttl || "");
+      items.push(w);
+      w.anim = { k: "in", t: 0 }; w.el.style.opacity = "0.05";
+    }
     if (!w) return;
     w.x = (st.x ?? 0.5) * innerWidth;
     w.y = (st.y ?? 0.5) * innerHeight;
@@ -4583,6 +4605,7 @@ function browserTap(b, cur) {
         it.x = Math.min(b.x + 480, innerWidth - 240); it.y = b.y;
         it.anim = { k: "in", t: 0 }; it.el.style.opacity = "0.05";
         items.push(it);
+        setTimeout(saveWidgets, 80);
         killItem(b);   // v3.3: any selection closes the pane
       }
       return;
@@ -4942,7 +4965,7 @@ function beginGrab(c, i, cur) {
 
 function endGrab(c, i, cur) {
   c.grabbedBy = c.grabbedBy.filter(k => k !== i);
-  if (LAYOUT_KINDS[c.type]) setTimeout(saveWidgets, 40);
+  if (inLayout(c)) setTimeout(saveWidgets, 40);
   if (c.isCfg) setTimeout(() => saveCfgPos(c), 40);
   if (c.grabbedBy.length === 1) {
     c.stretch = null;
@@ -7075,17 +7098,17 @@ addEventListener("mouseup", e => {
   } else if (kind === "size") {
     c.el.classList.remove("grabbed");
     if (c.isCfg) saveCfgPos(c);
-    if (LAYOUT_KINDS[c.type]) saveWidgets();
+    if (inLayout(c)) saveWidgets();
   } else if (kind === "resize") {
     c.el.classList.remove("grabbed");
     c.el.classList.remove("gripping"); gripEl = null;
-    if (LAYOUT_KINDS[c.type]) saveWidgets();
+    if (inLayout(c)) saveWidgets();
     if (c.isCfg) saveCfgPos(c);
   } else {
     const click = !mDrag.moved;
     endGrab(c, MOUSE_ID, cur);
     if (click) mouseTap(c, cur);
-    if (LAYOUT_KINDS[c.type]) saveWidgets();
+    if (inLayout(c)) saveWidgets();
     if (c.isCfg) saveCfgPos(c);
   }
   mDrag = null;
