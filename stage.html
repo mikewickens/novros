@@ -2173,6 +2173,11 @@ function mountPicker(root) {
   const wheel = root.querySelector(".wheel");
   const sw = root.querySelector(".wsw");
   if (sw) {
+    // The swatches are <b>, which the board does not recognise as a
+    // control -- so pressing one grabbed the panel, and bringing that
+    // panel to the front re-parents its node, which destroys the click
+    // before it can fire. Marking the row keeps the board's hands off.
+    sw.classList.add("ctl");
     sw.innerHTML = PRESETS.map(h =>
       `<b data-h="${h}" style="background:hsl(${h} 74% 58%)"></b>`).join("");
     sw.querySelectorAll("b").forEach(b => b.addEventListener("click", e => {
@@ -6796,7 +6801,11 @@ addEventListener("mousedown", e => {
   if (!INPUT.mouse) return;
   // A real control inside a panel belongs to the control, not the board:
   // without this a slider drag grabs the panel and moves it instead.
-  if (e.target.closest && e.target.closest("input,button,select,textarea,.ctl"))
+  // Anything that behaves like a control belongs to the control. The
+  // list used to be tag-based, so a control built from a plain element
+  // fell through to the board and had its click eaten.
+  if (e.target.closest && e.target.closest(
+      "input,button,select,textarea,label,.ctl,.wsw,.bgsw,.sw,.wheel,[data-h]"))
     return;
   const x = e.clientX, y = e.clientY;
   const c = hitTest({ x, y });
