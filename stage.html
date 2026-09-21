@@ -349,6 +349,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
      justify-content:center; padding:18px; }
   .card.wdg.weatherw { width:362px; }
   .card.wdg.newsw { width:540px; }
+  .card.wdg.terminalw { width:406px; }
+  .card.wdg.terminalw .win { padding:13px; }
+  .card.wdg.terminalw canvas { display:block; border-radius:8px;
+    background:linear-gradient(170deg, rgba(0,0,0,0.30), rgba(0,0,0,0.52)); }
+  .card.shapew { width:auto; padding:11px; border-radius:16px;
+    background:linear-gradient(168deg, rgba(var(--c30),0.14), rgba(var(--c5),0.55));
+    border:1.5px solid rgba(var(--c33),0.38);
+    backdrop-filter:blur(15px); -webkit-backdrop-filter:blur(15px); }
+  .card.shapew canvas { display:block; border-radius:10px; }
   .card.wdg.newsw .win { padding:15px 0 14px; }
   .card.wdg.newsw .wlbl { padding:0 20px; }
   .nwin { overflow:hidden; width:100%; margin-top:11px;
@@ -897,7 +906,8 @@ function pointDouble(cur) {
   if (!c) return;
   if (c.type === "card" && c.def.file)            return openPanel(c);
   if (c.type === "img" || c.type === "model" || c.type === "wdg" ||
-      c.type === "panel" || c.type === "browser") return killItem(c);
+      c.type === "shape" || c.type === "panel" ||
+      c.type === "browser") return killItem(c);
 }
 // Activation happens WHERE YOU PRESSED and the instant you let go.
 // Both matter. It used to wait 420ms to see whether a second click was
@@ -2976,6 +2986,33 @@ function gamePacman() {
 
 const GAME_IMPL = { tetris: gameTetris, invaders: gameInvaders, pacman: gamePacman };
 
+function makeShape(kind) {
+  const ex = items.find(i => i.type === "shape" && i.skind === kind && i.el.isConnected);
+  if (ex) { killItem(ex); return null; }
+  const el = document.createElement("div");
+  el.className = "card shapew";
+  const cv = document.createElement("canvas");
+  cv.width = 520; cv.height = 520;
+  cv.style.width = "260px"; cv.style.height = "260px";
+  el.appendChild(cv);
+  closable(el);
+  BEHIND.appendChild(el);
+  const it = { el, id: UID++, type: "shape", skind: kind,
+    def: { title: SHAPES[kind].title, file: "" },
+    x: innerWidth * 0.5, y: innerHeight * 0.5, scale: 1, vx: 0, vy: 0,
+    grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
+  it.anim = { k: "in", t: 0 }; el.style.opacity = "0.05";
+  items.push(it);
+  const st = { kind };
+  const spin = now => {
+    if (!el.isConnected) return;
+    drawShape(cv, st, now);
+    requestAnimationFrame(spin);
+  };
+  requestAnimationFrame(spin);
+  return it;
+}
+
 function makeGame(kind) {
   const ex = items.find(i => i.type === "game" && i.gkind === kind && i.el.isConnected);
   if (ex) { killItem(ex); return null; }
@@ -3140,6 +3177,9 @@ async function runDemo() {
   const W = innerWidth, H = innerHeight;
   const ring = () => DEMO.ring();
 
+  // The backdrop goes up FIRST and stays up. Nobody should have to sit
+  // in shot to record a tour of the interface.
+  try { await BG.set("blur"); } catch {}
   await sleepD(4200);                                  // let the intro play
 
   // ---------------------------------------------------------- THE RING
@@ -3161,7 +3201,10 @@ async function runDemo() {
   toggleWidget("news", W * 0.62, H * 0.12);
   await sleepD(2600);
   DEMO.say("Live headlines", "BBC, Guardian and Sky, straight off the wire");
-  await sleepD(3000);
+  await sleepD(3200);
+  DEMO.say("The data stream", "The same headlines, running through a live terminal");
+  toggleWidget("terminal", W * 0.74, H * 0.52);
+  await sleepD(4200);
 
   // ------------------------------------------------------------- MOVING
   DEMO.say("Move anything", "Drag a window and it follows the pointer");
@@ -3234,26 +3277,28 @@ async function runDemo() {
   await sleepD(700);
 
   // ------------------------------------------------------------ 3D MODELS
-  DEMO.say("Real 3D on the glass", "GLB models, lit and rendered live");
-  const MODELS = [
-    ["/media/models/sprout_dandys_world.glb", "Sprout"],
-    ["/media/models/berryroll_cosmo_-_dandys_world.glb", "Cosmo"],
-    ["/media/models/wooden_whimsywoody.glb", "Woody"],
-  ];
+  DEMO.say("Live 3D", "Wireframes built from maths, not loaded from a file");
   const made = [];
-  for (let k = 0; k < MODELS.length; k++) {
-    const it = makeModel(MODELS[k][0], MODELS[k][1]);
-    it.x = W * (0.26 + k * 0.24); it.y = H * 0.55;
-    it.anim = { k: "in", t: 0 }; it.el.style.opacity = "0.05";
-    items.push(it); made.push(it);
-    await sleepD(900);
+  const KINDS = ["icosa", "knot", "grid", "helix"];
+  for (let k = 0; k < KINDS.length; k++) {
+    const it = makeShape(KINDS[k]);
+    if (!it) continue;
+    it.x = W * (0.20 + k * 0.20); it.y = H * 0.56;
+    made.push(it);
+    await sleepD(850);
   }
-  await sleepD(2200);
-  DEMO.say("They spin, scale and carry", "Same controls as every other window");
-  await DEMO.glide(made[1], { s: 1.8, y: H * 0.5 }, 1200);
-  await sleepD(1800);
-  await DEMO.glide(made[1], { s: 1, y: H * 0.55 }, 900);
-  await sleepD(1600);
+  await sleepD(2400);
+  DEMO.say("Every one is animating", "Breathing, travelling, counter-winding");
+  await sleepD(3000);
+  DEMO.say("And they are just windows", "Move, scale and spin them like anything else");
+  if (made[1]) {
+    await DEMO.glide(made[1], { s: 1.9, y: H * 0.5 }, 1200);
+    await sleepD(1600);
+    await DEMO.spin(made[1], -0.4, 0.7, 1200);
+    await DEMO.spin(made[1], 0, 0, 900);
+    await DEMO.glide(made[1], { s: 1, y: H * 0.56 }, 900);
+  }
+  await sleepD(1400);
 
   // ----------------------------------------------------------- THE THEME
   DEMO.say("One wheel themes the whole thing", "Every colour rotates together");
@@ -3264,18 +3309,23 @@ async function runDemo() {
   await sleepD(700);
 
   // ------------------------------------------------------- BACKGROUNDS
-  DEMO.say("Virtual backgrounds", "Blur, a colour, or any image you drop in");
+  DEMO.say("Virtual backgrounds", "Blur, a flat colour, or any image you drop in");
   const imgs = bgImages();
-  if (imgs.length) {
-    BG.hideMe = false;
-    await BG.set("blur"); await sleepD(2400);
-    for (const u of imgs.slice(0, 3)) { await BG.set("image", u); await sleepD(2000); }
-    DEMO.say("Or take yourself out of it entirely", "Hide me: the backdrop, and nothing else");
-    BG.hideMe = true; await BG.set("image", imgs[0]);
-    await sleepD(2800);
-    BG.hideMe = false; await BG.set("none");
+  await BG.set("colour"); await sleepD(2400);
+  for (const h of [[196, 0.8, 0.30], [286, 0.7, 0.26], [24, 0.85, 0.34]]) {
+    BG.hue = h[0]; BG.sat = h[1]; BG.lum = h[2];
+    BG.colour = THEME.hsl2rgb(BG.hue, BG.sat, BG.lum).join(",");
+    await sleepD(1500);
   }
-  await sleepD(800);
+  if (imgs.length) {
+    DEMO.say("Or drop in a wallpaper", "Anything in your media folder becomes a backdrop");
+    for (const u of imgs.slice(0, 3)) { await BG.set("image", u); await sleepD(2100); }
+    // and it stays hidden from here on
+    DEMO.say("Hide me", "The backdrop alone, with no camera in it at all");
+    BG.hideMe = true; await BG.set("image", imgs[0]);
+    await sleepD(3000);
+  }
+  await sleepD(700);
   made.forEach(m => killItem(m));
   await sleepD(600);
 
@@ -3318,10 +3368,246 @@ async function runDemo() {
   DEMO.on = false;
 }
 
+// ============================================================
+// THE HUD PIECES -- a terminal, and procedural 3D
+// ------------------------------------------------------------
+// Both are drawn on a plain 2D canvas with a hand-rolled projection
+// rather than through three.js. The look wanted here is wireframe and
+// luminous, which is exactly what a line renderer is good at, and it
+// keeps these independent of the model pipeline entirely -- no loader,
+// no materials, nothing to fail on a slow first frame.
+// ============================================================
+
+// ---------------------------------------------------------- TERMINAL
+const TERM_VERBS = ["SCAN", "SYNC", "PARSE", "INDEX", "DECODE", "RESOLVE",
+                    "TRACE", "LINK", "VERIFY", "STREAM", "MAP", "CACHE"];
+const TERM_NODES = ["ORBITAL", "SIGINT", "MESH-07", "RELAY-3", "CORE", "EDGE-11",
+                    "VAULT", "UPLINK", "SENSOR", "GRID-2"];
+const hex = n => Array.from({ length: n }, () =>
+  "0123456789ABCDEF"[(Math.random() * 16) | 0]).join("");
+
+function termLine() {
+  const r = Math.random();
+  // a headline every so often, so the stream is carrying something real
+  if (r < 0.28 && NEWSDATA.items.length) {
+    const it = NEWSDATA.items[(Math.random() * NEWSDATA.items.length) | 0];
+    return { k: "news", s: it.s, t: it.t };
+  }
+  if (r < 0.40) return { k: "bar", t: TERM_NODES[(Math.random() * TERM_NODES.length) | 0],
+                         v: Math.random() };
+  if (r < 0.52) return { k: "hex", t: hex(8) + "  " + hex(8) + "  " + hex(8) + "  " + hex(4) };
+  if (r < 0.64) return { k: "ok", t: `${TERM_VERBS[(Math.random() * TERM_VERBS.length) | 0]} ` +
+                         `${TERM_NODES[(Math.random() * TERM_NODES.length) | 0]}`,
+                         v: (Math.random() * 90 + 8).toFixed(1) };
+  if (r < 0.76) return { k: "dim", t: `0x${hex(6)} :: ${(Math.random() * 9999) | 0} packets ` +
+                         `/ ${(Math.random() * 60 + 2).toFixed(0)}ms` };
+  return { k: "run", t: `${TERM_VERBS[(Math.random() * TERM_VERBS.length) | 0]} ` +
+           `${TERM_NODES[(Math.random() * TERM_NODES.length) | 0]} ` +
+           `[${"|".repeat((Math.random() * 14) | 0).padEnd(14, ".")}]` };
+}
+
+function drawTerminal(cv, st, now) {
+  const x = cv.getContext("2d");
+  const W = cv.width / 2, H = cv.height / 2;
+  x.save(); x.scale(2, 2); x.clearRect(0, 0, W, H);
+  const ink = inkRGB();
+  const acc = (getComputedStyle(document.documentElement)
+    .getPropertyValue("--c22").trim()) || "111,229,214";
+  const LH = 15, PAD = 14, TOP = 30;
+
+  // advance the stream
+  if (now - st.last > st.rate) {
+    st.last = now;
+    st.lines.push(termLine());
+    if (st.lines.length > 60) st.lines.shift();
+    st.off += LH;
+  }
+  const slide = Math.min(LH, (now - st.last) / st.rate * LH);
+
+  // frame and header
+  x.strokeStyle = `rgba(${acc},0.5)`; x.lineWidth = 1;
+  const br = 9;
+  [[PAD, TOP - 8], [W - PAD, TOP - 8], [PAD, H - 10], [W - PAD, H - 10]]
+    .forEach(([bx, by], i) => {
+      const sx = i % 2 ? -1 : 1, sy = i < 2 ? 1 : -1;
+      x.beginPath();
+      x.moveTo(bx + sx * br, by); x.lineTo(bx, by); x.lineTo(bx, by + sy * br);
+      x.stroke();
+    });
+  x.fillStyle = `rgba(${acc},0.95)`;
+  x.font = '700 9px "SF Mono",Menlo,monospace';
+  x.fillText("▸ DATA STREAM", PAD, 18);
+  x.textAlign = "right";
+  x.fillStyle = `rgba(${ink},0.55)`;
+  x.fillText(`${st.lines.length} REC  ·  ${(60 + Math.sin(now / 900) * 9).toFixed(0)} Hz`,
+             W - PAD, 18);
+  x.textAlign = "left";
+  x.strokeStyle = `rgba(${acc},0.28)`;
+  x.beginPath(); x.moveTo(PAD, 23); x.lineTo(W - PAD, 23); x.stroke();
+
+  // the stream, rising
+  x.save();
+  x.beginPath(); x.rect(PAD, TOP - 4, W - PAD * 2, H - TOP - 12); x.clip();
+  let y = H - 14 + slide;
+  for (let i = st.lines.length - 1; i >= 0 && y > TOP - LH; i--, y -= LH) {
+    const L = st.lines[i];
+    const age = Math.min(1, (H - 14 - y) / (H - TOP));
+    const a = 0.25 + 0.75 * (1 - age);
+    x.font = '500 10.5px "SF Mono",Menlo,monospace';
+    if (L.k === "news") {
+      x.fillStyle = `rgba(${acc},${a})`;
+      x.fillText("▸ " + L.s.toUpperCase(), PAD, y);
+      const w0 = x.measureText("▸ " + L.s.toUpperCase() + "  ").width;
+      x.fillStyle = `rgba(${ink},${a})`;
+      x.fillText(L.t.slice(0, 52), PAD + w0, y);
+    } else if (L.k === "bar") {
+      x.fillStyle = `rgba(${ink},${a * 0.8})`;
+      x.fillText(L.t.padEnd(10), PAD, y);
+      const bx = PAD + 78, bw = W - PAD * 2 - 118;
+      x.fillStyle = `rgba(${acc},${a * 0.18})`; x.fillRect(bx, y - 7, bw, 7);
+      x.fillStyle = `rgba(${acc},${a * 0.85})`; x.fillRect(bx, y - 7, bw * L.v, 7);
+      x.fillStyle = `rgba(${ink},${a * 0.7})`;
+      x.fillText((L.v * 100).toFixed(0) + "%", bx + bw + 8, y);
+    } else if (L.k === "ok") {
+      x.fillStyle = `rgba(${acc},${a})`; x.fillText("✓", PAD, y);
+      x.fillStyle = `rgba(${ink},${a * 0.9})`; x.fillText(L.t, PAD + 14, y);
+      x.fillStyle = `rgba(${ink},${a * 0.45})`;
+      x.fillText(L.v + "ms", PAD + 190, y);
+    } else if (L.k === "hex") {
+      x.fillStyle = `rgba(${acc},${a * 0.55})`; x.fillText(L.t, PAD, y);
+    } else if (L.k === "dim") {
+      x.fillStyle = `rgba(${ink},${a * 0.38})`; x.fillText(L.t, PAD, y);
+    } else {
+      x.fillStyle = `rgba(${ink},${a * 0.8})`; x.fillText(L.t, PAD, y);
+    }
+  }
+  x.restore();
+
+  // the live caret
+  if ((now / 500 | 0) % 2) {
+    x.fillStyle = `rgba(${acc},0.9)`;
+    x.fillRect(PAD, H - 20, 7, 11);
+  }
+  x.restore();
+}
+
+// ------------------------------------------------------ PROCEDURAL 3D
+// Wireframes, built from maths rather than loaded from a file, so they
+// cost nothing to ship and animate by construction.
+const SHAPES = {
+  icosa: { title: "Icosphere", body: "subdivided, breathing" },
+  knot:  { title: "Torus Knot", body: "a closed path in 3D" },
+  grid:  { title: "Wave Lattice", body: "a field under a travelling wave" },
+  helix: { title: "Double Helix", body: "two strands, counter-wound" },
+};
+
+function shapeGeometry(kind, t) {
+  const V = [], E = [];
+  if (kind === "icosa") {
+    const g = (1 + Math.sqrt(5)) / 2;
+    const base = [[-1, g, 0], [1, g, 0], [-1, -g, 0], [1, -g, 0],
+                  [0, -1, g], [0, 1, g], [0, -1, -g], [0, 1, -g],
+                  [g, 0, -1], [g, 0, 1], [-g, 0, -1], [-g, 0, 1]];
+    const pulse = 1 + Math.sin(t * 1.6) * 0.10;
+    base.forEach(p => {
+      const n = Math.hypot(...p);
+      V.push(p.map(c => (c / n) * pulse));
+    });
+    for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++) {
+      const d = Math.hypot(V[i][0] - V[j][0], V[i][1] - V[j][1], V[i][2] - V[j][2]);
+      if (d < 1.2 * pulse) E.push([i, j]);
+    }
+  } else if (kind === "knot") {
+    const N = 120, p = 2, q = 3;
+    for (let i = 0; i < N; i++) {
+      const u = (i / N) * Math.PI * 2 * p + t * 0.4;
+      const r = 0.6 + 0.28 * Math.cos(q * u / p);
+      V.push([r * Math.cos(u), r * Math.sin(u), 0.34 * Math.sin(q * u / p)]);
+      E.push([i, (i + 1) % N]);
+    }
+  } else if (kind === "grid") {
+    const N = 9, S = 1.5;
+    for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) {
+      const px = (a / (N - 1) - 0.5) * S, pz = (b / (N - 1) - 0.5) * S;
+      V.push([px, Math.sin(px * 4 + t * 2.2) * Math.cos(pz * 4 + t * 1.6) * 0.26, pz]);
+    }
+    for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) {
+      const i = a * N + b;
+      if (b < N - 1) E.push([i, i + 1]);
+      if (a < N - 1) E.push([i, i + N]);
+    }
+  } else {
+    const N = 46;
+    for (let s = 0; s < 2; s++) for (let i = 0; i < N; i++) {
+      const u = (i / (N - 1)) * Math.PI * 3 + t * 0.9 + s * Math.PI;
+      V.push([Math.cos(u) * 0.5, (i / (N - 1) - 0.5) * 1.7, Math.sin(u) * 0.5]);
+    }
+    for (let s = 0; s < 2; s++) for (let i = 0; i < N - 1; i++)
+      E.push([s * N + i, s * N + i + 1]);
+    for (let i = 0; i < N; i += 4) E.push([i, N + i]);   // the rungs
+  }
+  return { V, E };
+}
+
+function drawShape(cv, st, now) {
+  const x = cv.getContext("2d");
+  const W = cv.width / 2, H = cv.height / 2;
+  x.save(); x.scale(2, 2); x.clearRect(0, 0, W, H);
+  const acc = (getComputedStyle(document.documentElement)
+    .getPropertyValue("--c22").trim()) || "111,229,214";
+  const lite = (getComputedStyle(document.documentElement)
+    .getPropertyValue("--c30").trim()) || "160,255,240";
+  const t = now / 1000;
+  const { V, E } = shapeGeometry(st.kind, t);
+  const ax = Math.sin(t * 0.42) * 0.5 + 0.35, ay = t * 0.55;
+  const cx = W / 2, cy = H / 2 + 6, F = Math.min(W, H) * 0.62, D = 3.4;
+
+  const P = V.map(([px, py, pz]) => {
+    let y1 = py * Math.cos(ax) - pz * Math.sin(ax);
+    let z1 = py * Math.sin(ax) + pz * Math.cos(ax);
+    const x2 = px * Math.cos(ay) + z1 * Math.sin(ay);
+    const z2 = -px * Math.sin(ay) + z1 * Math.cos(ay);
+    const k = F / (z2 + D);
+    return { x: cx + x2 * k, y: cy + y1 * k, z: z2 };
+  });
+
+  // depth-sorted, so the far side genuinely reads as the far side
+  E.map(([a, b]) => ({ a, b, z: (P[a].z + P[b].z) / 2 }))
+    .sort((m, n) => m.z - n.z)
+    .forEach(({ a, b, z }) => {
+      const d = Math.max(0, Math.min(1, (z + 1.3) / 2.6));
+      x.strokeStyle = `rgba(${acc},${0.16 + d * 0.72})`;
+      x.lineWidth = 0.7 + d * 1.5;
+      x.shadowColor = `rgba(${lite},${d * 0.85})`; x.shadowBlur = 5 + d * 9;
+      x.beginPath(); x.moveTo(P[a].x, P[a].y); x.lineTo(P[b].x, P[b].y); x.stroke();
+    });
+  x.shadowBlur = 0;
+  P.forEach(p => {
+    const d = Math.max(0, Math.min(1, (p.z + 1.3) / 2.6));
+    if (d < 0.45) return;
+    x.fillStyle = `rgba(${lite},${d * 0.85})`;
+    x.beginPath(); x.arc(p.x, p.y, 0.8 + d * 1.3, 0, 7); x.fill();
+  });
+
+  // a little instrumentation around it, in the HUD idiom
+  x.strokeStyle = `rgba(${acc},0.28)`; x.lineWidth = 1;
+  x.beginPath(); x.arc(cx, cy, F * 0.98, t % (Math.PI * 2), t % (Math.PI * 2) + 1.5); x.stroke();
+  x.beginPath(); x.arc(cx, cy, F * 1.06, -t % (Math.PI * 2), -t % (Math.PI * 2) + 0.9); x.stroke();
+  x.fillStyle = `rgba(${acc},0.8)`;
+  x.font = '700 8px "SF Mono",Menlo,monospace';
+  x.fillText(`${st.kind.toUpperCase()}  ${V.length}V ${E.length}E`, 12, H - 10);
+  x.textAlign = "right";
+  x.fillText(`${(Math.sin(t) * 50 + 50).toFixed(0)}%`, W - 12, H - 10);
+  x.textAlign = "left";
+  x.restore();
+}
+
 const UIPREF = { modeBar: true, ink: "auto" };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
   window.makeGame = k => makeGame(k);
+  window.makeShape = k => makeShape(k);
+  window.toggleWidget = (k, x, y) => toggleWidget(k, x, y);
   window.runDemo = () => runDemo();
   window.spawnStage = (a, b) => spawnStage(a, b);
   window.loadTree = () => loadTree();
@@ -3533,6 +3819,7 @@ const WDG_KINDS = {
   date:    { title: "Date",    body: "day and month" },
   weather: { title: "Weather", body: "now and next hours" },
   news:    { title: "News",    body: "UK and world headlines" },
+  terminal:{ title: "Terminal", body: "the stream, scrolling" },
 };
 
 // RSS carries no CORS headers, so the server fetches the feeds and this
@@ -3650,6 +3937,27 @@ function paintWidget(w) {
                cv.width = cv.height = 320; cv.style.width = cv.style.height = "158px";
                box.appendChild(cv); }
     drawClock(cv, now);
+    return;
+  }
+  if (w.wkind === "terminal") {
+    if (!w.term) {
+      box.innerHTML = "";
+      const cv = document.createElement("canvas");
+      cv.width = 760; cv.height = 520;
+      cv.style.width = "380px"; cv.style.height = "260px";
+      box.appendChild(cv);
+      w.term = { cv, lines: [], off: 0, last: 0, rate: 260 };
+      for (let k = 0; k < 24; k++) w.term.lines.push(termLine());
+      // its own loop: the widget repaint is once a second, and a stream
+      // that moves once a second is a slideshow
+      const spin = now => {
+        if (!w.el.isConnected) return;
+        drawTerminal(w.term.cv, w.term, now);
+        requestAnimationFrame(spin);
+      };
+      requestAnimationFrame(spin);
+    }
+    if (NEWSDATA.items.length < 2) fetchNews();
     return;
   }
   if (w.wkind === "news") {
@@ -3815,6 +4123,7 @@ function novStation(m) {
   }
   if (m === "apps") return { orb: "apps", body: "clock · date · weather · news" };
   if (m === "games") return { orb: "games", body: "tetris · invaders · pac-man" };
+  if (m === "projects") return { orb: "shapes", body: "live procedural 3D" };
   if (m === "settings") return { orb: null, body: "input & controls" };
   return { orb: null, body: "empty" };
 }
@@ -3907,6 +4216,14 @@ function browserRows(b) {
       else out.push({ d: depth, t: x.title, k: "note", f: x.file });
     });
   };
+  if (b.bkind === "shapes") {
+    for (const k in SHAPES) {
+      const on = items.some(i => i.type === "shape" && i.skind === k && i.el.isConnected);
+      out.push({ d: 0, k: "shape", w: k,
+                 t: `${SHAPES[k].title}${on ? "   \u00b7 on board" : ""}` });
+    }
+    return out;
+  }
   if (b.bkind === "games") {
     for (const k in GAME_KINDS) {
       const on = items.some(i => i.type === "game" && i.gkind === k && i.el.isConnected);
@@ -3931,7 +4248,7 @@ function browserRows(b) {
 
 function browserRowsHTML(tuples) {
   const ICO = { dir0: "▸", dir1: "▾", note: "▤", prop: "▦",
-                widget: "▣", game: "▶" };
+                widget: "▣", game: "▶", shape: "◈" };
   return tuples.map(([d, t, k, o], i) =>
     `<div class="brow ${k}" data-i="${i}" style="padding-left:${18 + d * 26}px">` +
     `<span class="bico">${k === "dir" ? ICO["dir" + o] : ICO[k]}</span>` +
@@ -3999,7 +4316,7 @@ function openBrowser(kind, ox, oy) {
   if (ex) { killItem(ex); return; }
   loadTree().then(() => {
     const label = String(kind === "props" ? "Props" : kind === "apps" ? "Widgets"
-      : kind === "games" ? "Games"
+      : kind === "games" ? "Games" : kind === "shapes" ? "Projects"
       : ((CFG.orbs || [])[kind] || {}).title || "Notes").toUpperCase();
     const el = document.createElement("div");
     el.className = "panel browser";
@@ -4050,6 +4367,9 @@ function browserTap(b, cur) {
         openPanel({ def: { file: row.f, title: row.t } });
         killItem(b);   // v3.3 (his broadened rule): selecting ANYTHING
                        // closes the whole pane — only dir taps keep it
+      } else if (row.k === "shape") {
+        makeShape(row.w);
+        browserRefresh(b);
       } else if (row.k === "game") {
         makeGame(row.w);
         browserRefresh(b);
@@ -4274,7 +4594,7 @@ function handArches(lms) {
 }
 
 function frontWindow() {
-  const CLOSABLE = ["panel", "browser", "card", "img", "model", "game"];
+  const CLOSABLE = ["panel", "browser", "card", "img", "model", "game", "shape"];
   for (let i = items.length - 1; i >= 0; i--) {
     const c = items[i];
     if (c.el.isConnected && CLOSABLE.includes(c.type)) return c;
@@ -6338,7 +6658,8 @@ function mouseTap(c, cur) {
     return ringToggle(c);
   }
   if (c.type === "card" && c.def.file) return openPanel(c);
-  if (c.type === "img" || c.type === "model" || c.type === "wdg") return killItem(c);
+  if (c.type === "img" || c.type === "model" ||
+      c.type === "wdg" || c.type === "shape") return killItem(c);
   if (c.type === "panel") {                       // notes close at the bar
     const barEl = c.el.querySelector(".bar");
     const r = barEl && barEl.getBoundingClientRect();
