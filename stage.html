@@ -3011,7 +3011,7 @@ const GAME_IMPL = { tetris: gameTetris, invaders: gameInvaders, pacman: gamePacm
 
 function makeShape(kind) {
   const ex = items.find(i => i.type === "shape" && i.skind === kind && i.el.isConnected);
-  if (ex) { killItem(ex); return null; }
+  if (ex) { killItem(ex); setTimeout(saveWidgets, 60); return null; }
   const el = document.createElement("div");
   el.className = "card shapew";
   const cv = document.createElement("canvas");
@@ -3033,12 +3033,13 @@ function makeShape(kind) {
     requestAnimationFrame(spin);
   };
   requestAnimationFrame(spin);
+  setTimeout(saveWidgets, 60);
   return it;
 }
 
 function makeGame(kind) {
   const ex = items.find(i => i.type === "game" && i.gkind === kind && i.el.isConnected);
-  if (ex) { killItem(ex); return null; }
+  if (ex) { killItem(ex); setTimeout(saveWidgets, 60); return null; }
   const g = GAME_IMPL[kind]();
   const el = document.createElement("div");
   el.className = "card gamew";
@@ -3073,6 +3074,7 @@ function makeGame(kind) {
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
+  setTimeout(saveWidgets, 60);
   return it;
 }
 
@@ -3990,9 +3992,13 @@ function widgetState() {
   try { return JSON.parse(localStorage.getItem("novros-widgets") || "[]"); }
   catch { return []; }
 }
+// Widgets, wireframes and games all persist: they are all windows you
+// arranged, and "where I left it" should not depend on which kind it was.
+const LAYOUT_KINDS = { wdg: "wkind", shape: "skind", game: "gkind" };
 function saveWidgets() {
-  const live = items.filter(i => i.type === "wdg" && i.el.isConnected)
-    .map(i => ({ k: i.wkind,
+  const live = items
+    .filter(i => LAYOUT_KINDS[i.type] && i.el.isConnected)
+    .map(i => ({ t: i.type, k: i[LAYOUT_KINDS[i.type]],
                  x: +(i.x / innerWidth).toFixed(4),
                  y: +(i.y / innerHeight).toFixed(4),
                  s: +(i.scale || 1).toFixed(3) }));
@@ -4025,13 +4031,28 @@ function toggleWidget(kind, x, y) {
 }
 
 function restoreWidgets() {
-  widgetState().forEach(st => {
-    if (!WDG_KINDS[st.k]) return;
-    const w = makeWidget(st.k);
+  // Clear to the bone FIRST, and synchronously. killItem only starts a
+  // fade, so anything it was asked to remove is still in the DOM and
+  // still isConnected a moment later -- and rebuilding over that gave
+  // two of every window. Restoring a layout has to start from nothing.
+  const state = widgetState();
+  items.filter(i => LAYOUT_KINDS[i.type]).forEach(i => {
+    i.grabbedBy = []; i.anim = null;
+    if (i.el) i.el.remove();
+  });
+  items = items.filter(i => !LAYOUT_KINDS[i.type]);
+  state.forEach(st => {
+    const t = st.t || "wdg";            // entries saved before this knew only widgets
+    let w = null;
+    if (t === "wdg" && WDG_KINDS[st.k]) {
+      w = makeWidget(st.k);
+      w.anim = { k: "in", t: 0 }; w.el.style.opacity = "0.05";
+    } else if (t === "shape" && SHAPES[st.k]) w = makeShape(st.k);
+    else if (t === "game" && GAME_KINDS[st.k]) w = makeGame(st.k);
+    if (!w) return;
     w.x = (st.x ?? 0.5) * innerWidth;
     w.y = (st.y ?? 0.5) * innerHeight;
     w.scale = st.s || 1;
-    w.anim = { k: "in", t: 0 }; w.el.style.opacity = "0.05";
   });
 }
 
@@ -4637,7 +4658,12 @@ async function cycleCam() {
 addEventListener("keydown", e => {
   // live respawn: re-read the notes AND props trees from disk before
   // redrawing — a freshly dropped file appears on a plain R press
-  if (e.key === "r" || e.key === "R") loadTree().then(() => spawnStage());
+  // R rebuilds the board from disk -- and must put back what you had
+  // arranged on it. spawnStage clears everything, so without the restore
+  // a press of R wiped every widget, and the next save then wrote the
+  // emptied set over the layout for good.
+  if (e.key === "r" || e.key === "R")
+    loadTree().then(() => { spawnStage(); restoreWidgets(); });
   if (e.key === "d" || e.key === "D") dbg.style.display = dbg.style.display === "block" ? "none" : "block";
   if (e.key === "c" || e.key === "C") cycleCam();
   if (e.key === "h" || e.key === "H") HEAD.toggle();
@@ -4876,7 +4902,7 @@ function beginGrab(c, i, cur) {
 
 function endGrab(c, i, cur) {
   c.grabbedBy = c.grabbedBy.filter(k => k !== i);
-  if (c.type === "wdg") setTimeout(saveWidgets, 40);
+  if (LAYOUT_KINDS[c.type]) setTimeout(saveWidgets, 40);
   if (c.grabbedBy.length === 1) {
     c.stretch = null;
     const rem = cursors[c.grabbedBy[0]];
@@ -6925,12 +6951,12 @@ addEventListener("mouseup", e => {
   } else if (kind === "resize") {
     c.el.classList.remove("grabbed");
     c.el.classList.remove("gripping"); gripEl = null;
-    if (c.type === "wdg") saveWidgets();
+    if (LAYOUT_KINDS[c.type]) saveWidgets();
   } else {
     const click = !mDrag.moved;
     endGrab(c, MOUSE_ID, cur);
     if (click) mouseTap(c, cur);
-    if (c.type === "wdg") saveWidgets();
+    if (LAYOUT_KINDS[c.type]) saveWidgets();
   }
   mDrag = null;
 });
