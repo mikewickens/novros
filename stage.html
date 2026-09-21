@@ -330,6 +330,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                 border:1.5px solid rgba(var(--c33),0.42);
                 backdrop-filter:blur(16px) saturate(1.1);
                 -webkit-backdrop-filter:blur(16px) saturate(1.1); }
+  /* the clip library, offered on the model's own card */
+  .clipbar { position:absolute; left:8px; right:8px; bottom:7px; z-index:5;
+             display:flex; flex-wrap:wrap; gap:4px; justify-content:center; }
+  .clipbar b { cursor:pointer; padding:3px 8px; border-radius:7px;
+               font:600 9px "SF Mono",Menlo,monospace; letter-spacing:0.07em;
+               color:rgba(var(--c39),0.8); background:rgba(var(--c5),0.55);
+               border:1px solid rgba(var(--c33),0.3); backdrop-filter:blur(7px);
+               -webkit-backdrop-filter:blur(7px); transition:all .14s ease; }
+  .clipbar b:hover { color:#fff; border-color:rgba(var(--c33),0.7); }
+  .clipbar b.on { color:rgb(var(--c5)); background:rgba(var(--c22),0.92);
+                  border-color:rgba(var(--c30),0.95); }
+  body.overlay .clipbar { display:none; }
   .card.gamew .gtitle { font:700 10px "SF Mono",Menlo,monospace; letter-spacing:0.2em;
                         color:rgba(var(--c22),0.95); text-transform:uppercase;
                         padding:2px 2px 8px; }
@@ -1543,6 +1555,90 @@ function loadThree() {
   return _three;
 }
 
+// ============================================================
+// THE CLIP LIBRARY
+// ------------------------------------------------------------
+// Ported from the KayKit loader in DesktopBuddy. The idea there is the
+// useful one: a character and its animations are separate files that
+// share a skeleton, so ONE mixer can play any of them. That is exactly
+// how Mixamo hands them over -- you download the character once, then
+// each animation on its own -- and without this every clip would have
+// to be a whole second copy of the character on the board.
+//
+// The convention follows the folder law the rest of media/ already
+// uses: alongside Megan.glb, a folder called Megan.anims holds the
+// clips. Anything in there is offered on the model's own card.
+// ============================================================
+function animFolderFor(src) {
+  const rel = (src || "").replace(/^\/media\//, "");
+  return rel.replace(/\.glb$/i, ".anims/");
+}
+
+function propPaths() {
+  const out = [];
+  const walk = t => {
+    (t.items || []).forEach(f => out.push(f));
+    (t.dirs || []).forEach(walk);
+  };
+  if (PROPSTREE) walk(PROPSTREE);
+  return out;
+}
+
+// Every clip that belongs to this character, keyed by a readable name.
+async function loadClipLibrary(src, GLTFLoader) {
+  const folder = animFolderFor(src);
+  const files = propPaths().filter(f =>
+    f.toLowerCase().startsWith(folder.toLowerCase()) && /\.glb$/i.test(f));
+  if (!files.length) return {};
+  const loader = new GLTFLoader();
+  const clips = {};
+  for (const f of files) {
+    try {
+      const g = await loader.loadAsync("/media/" + f);
+      // Mixamo names every clip the same thing, so the FILE is the name
+      // -- otherwise a library of twenty animations is twenty entries
+      // all called "mixamo.com".
+      const label = f.split("/").pop().replace(/\.glb$/i, "");
+      g.animations.forEach((c, i) => {
+        clips[g.animations.length > 1 ? `${label} ${i + 1}` : label] = c;
+      });
+    } catch (e) {
+      console.warn("[clips] could not load", f, e.message);
+    }
+  }
+  return clips;
+}
+
+// Cross-fade rather than cut, so a character does not snap between poses.
+function playClip(sc, name) {
+  if (!sc || !sc.mixer || !sc.clips || !sc.clips[name]) return;
+  const next = sc.mixer.clipAction(sc.clips[name]);
+  next.reset().setLoop(2201, Infinity).play();      // THREE.LoopRepeat
+  if (sc.current && sc.current !== next) {
+    sc.current.crossFadeTo(next, 0.28, false);
+  } else {
+    next.fadeIn(0.2);
+  }
+  sc.current = next;
+  sc.clipName = name;
+  const bar = sc.it && sc.it.el && sc.it.el.querySelector(".clipbar");
+  if (bar) bar.querySelectorAll("b").forEach(b =>
+    b.classList.toggle("on", b.dataset.clip === name));
+}
+
+// The card grows a row of clip names when there is more than one.
+function buildClipBar(it, sc) {
+  const names = Object.keys(sc.clips || {});
+  if (names.length < 2) return;
+  const bar = document.createElement("div");
+  bar.className = "clipbar ctl";
+  bar.innerHTML = names.map(n =>
+    `<b data-clip="${escT(n)}"${n === sc.clipName ? ' class="on"' : ""}>${escT(n)}</b>`).join("");
+  it.el.appendChild(bar);
+  bar.querySelectorAll("b").forEach(b =>
+    b.addEventListener("click", e => { e.stopPropagation(); playClip(sc, b.dataset.clip); }));
+}
+
 async function buildModelScene(el, src, mm, lift) {
   try {
     const { THREE, GLTFLoader, RoomEnvironment } = await loadThree();
@@ -1791,7 +1887,21 @@ async function buildModelScene(el, src, mm, lift) {
           { k: TUNE.holoGlow, sat: 1.0, spread: TUNE.holoSpread })
       : nLift ? buildBloomRig(THREE, renderer, { k: 2.2, sat: 2.6, spread: 2.6 })
       : null;
+    // Clips that live beside the character, on the same skeleton. The
+    // mixer is built against the character's own object, so a clip
+    // authored for that skeleton plays on it without retargeting.
+    let clips = {}, clipName = null;
+    if (mixer) {
+      try {
+        clips = await loadClipLibrary(src, GLTFLoader);
+        if (gltf.animations && gltf.animations.length)
+          clips[gltf.animations.length === 1 ? "Default" : "Default 1"] =
+            gltf.animations[0];
+        clipName = Object.keys(clips)[0] || null;
+      } catch (e) { console.warn("[clips]", e.message); }
+    }
     return { renderer, scene, camera, group, canvas, mixer, post, THREE, ghostMat,
+             clips, clipName, current: null,
              exParts, exSpread, exC: 0,
              bufSize: Math.round(MODEL_PX * Math.min(devicePixelRatio || 1, 2)) };
   } catch (e) {
@@ -1831,6 +1941,16 @@ function makeModel(src, title, mode, lift) {
     rx: -0.15, ry: 0.6, rz: 0, rvy: 0, vx: 0, vy: 0,
     grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
   buildModelScene(el, src, mm, lift).then(sc => {
+    if (sc && sc.clips && Object.keys(sc.clips).length > 1) {
+      sc.it = it;
+      // a library means the character's own clip is one option among
+      // many, so stop playing everything at once and pick one
+      sc.mixer.stopAllAction();
+      // the bar first, then the clip: playClip marks the active button,
+      // and it cannot mark one that has not been built yet
+      buildClipBar(it, sc);
+      playClip(sc, sc.clipName);
+    }
     if (sc) {
       sc.it = it; MSCENES.set(it.id, sc);
       if (sc.exParts && sc.exParts.length > 2) it.exCap = 1;
