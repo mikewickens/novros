@@ -496,6 +496,25 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   @keyframes introSweep { 0% { opacity:0; transform:scaleX(0.1); }
                           45% { opacity:1; } 100% { opacity:0; transform:scaleX(1); } }
   /* ---------- INPUT MODE BAR ---------- */
+  /* ---------- DEMO OVERLAY ---------- */
+  #demoCap { position:fixed; left:0; right:0; bottom:8vh; z-index:1900;
+             text-align:center; pointer-events:none; opacity:0;
+             transform:translateY(14px); transition:all .5s cubic-bezier(.2,.9,.3,1); }
+  #demoCap.show { opacity:1; transform:none; }
+  #demoCap .dt { font:700 clamp(26px,3.6vmin,46px) -apple-system,"SF Pro Display",sans-serif;
+                 color:#fff; letter-spacing:-0.01em;
+                 text-shadow:0 2px 26px rgba(0,0,0,0.85), 0 0 60px rgba(0,0,0,0.6); }
+  #demoCap .ds { margin-top:8px; font:500 clamp(12px,1.5vmin,18px) -apple-system,sans-serif;
+                 color:rgba(255,255,255,0.86);
+                 text-shadow:0 2px 14px rgba(0,0,0,0.9); }
+  #demoPtr { position:fixed; width:22px; height:30px; z-index:1950; opacity:0;
+             pointer-events:none; background:#fff;
+             clip-path:polygon(0 0, 0 76%, 25% 58%, 43% 97%, 62% 89%, 45% 52%, 77% 49%);
+             filter:drop-shadow(0 2px 6px rgba(0,0,0,0.9));
+             transition:opacity .3s ease, transform .16s ease; }
+  #demoPtr.show { opacity:1; }
+  #demoPtr.tap { transform:scale(0.72); }
+  body.demo #modes { opacity:0.35; }
   #modes { position:fixed; top:14px; right:14px; z-index:1500; display:flex; gap:7px;
            font:600 10.5px "SF Mono",Menlo,monospace; letter-spacing:0.09em; }
   #modes button { pointer-events:auto; cursor:pointer; padding:7px 11px; border-radius:9px;
@@ -634,6 +653,8 @@ setTimeout(function () {
   <div class="sub">NO VR OPERATING SYSTEM</div>
 </div>
 <div id="modes"></div>
+<div id="demoCap"></div>
+<div id="demoPtr"></div>
 <div id="bgpop">
   <div class="wheel"><div class="wdot"></div></div>
   <label>Lightness</label>
@@ -3010,10 +3031,300 @@ addEventListener("mousedown", e => {
   if (g) lastGameId = g.id;
 }, true);
 
+// ============================================================
+// THE DEMO  --  stage.html?demo=1
+// ------------------------------------------------------------
+// A self-running tour. Driving it from inside the page rather than
+// puppeteering clicks means it can narrate what it is doing, move at a
+// readable pace, and animate the pointer to each target so the actions
+// read as actions rather than things that simply happened.
+// ============================================================
+const DEMO = {
+  on: false, stop: false,
+
+  say(title, sub, ms = 3200) {
+    const c = document.getElementById("demoCap");
+    if (!c) return;
+    c.innerHTML = `<div class="dt">${escT(title)}</div>` +
+                  (sub ? `<div class="ds">${escT(sub)}</div>` : "");
+    c.classList.add("show");
+    clearTimeout(this._capT);
+    this._capT = setTimeout(() => c.classList.remove("show"), ms);
+  },
+
+  // the pointer glides to a target before acting on it, so every step
+  // reads as a deliberate action rather than a thing that just happened
+  async point(x, y, ms = 700) {
+    const p = document.getElementById("demoPtr");
+    if (!p) return;
+    p.classList.add("show");
+    const r = p.getBoundingClientRect();
+    const x0 = parseFloat(p.dataset.x || innerWidth / 2);
+    const y0 = parseFloat(p.dataset.y || innerHeight / 2);
+    await this.tween(ms, t => {
+      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      p.style.left = (x0 + (x - x0) * e) + "px";
+      p.style.top = (y0 + (y - y0) * e) + "px";
+    });
+    p.dataset.x = x; p.dataset.y = y;
+  },
+  async tap() {
+    const p = document.getElementById("demoPtr");
+    if (p) { p.classList.add("tap"); await sleepD(180); p.classList.remove("tap"); }
+  },
+  async at(item, dx = 0, dy = 0) {
+    if (!item || !item.el.isConnected) return;
+    const r = item.el.getBoundingClientRect();
+    await this.point(r.left + r.width / 2 + dx, r.top + r.height / 2 + dy);
+  },
+
+  // A browser throttles requestAnimationFrame in a tab that is not in
+  // front, which would leave the tour frozen mid-step with no error to
+  // show for it. The timer is the floor: whatever happens to the frame
+  // loop, the step finishes and the tour moves on.
+  tween(ms, fn) {
+    return new Promise(res => {
+      const t0 = performance.now();
+      let raf = 0, done = false;
+      const finish = () => {
+        if (done) return;
+        done = true; cancelAnimationFrame(raf); clearTimeout(guard); res();
+      };
+      const step = now => {
+        if (DEMO.stop) return finish();
+        const t = Math.min(1, (now - t0) / ms);
+        fn(t);
+        if (t < 1) raf = requestAnimationFrame(step); else finish();
+      };
+      const guard = setTimeout(() => { fn(1); finish(); }, ms + 500);
+      raf = requestAnimationFrame(step);
+    });
+  },
+
+  // move, scale and rotate an item smoothly, the way a hand would
+  glide(it, to, ms = 900) {
+    if (!it || !it.el.isConnected) return Promise.resolve();
+    const f = { x: it.x, y: it.y, s: it.scale || 1 };
+    return this.tween(ms, t => {
+      const e = 1 - Math.pow(1 - t, 3);
+      if (to.x != null) it.x = f.x + (to.x - f.x) * e;
+      if (to.y != null) it.y = f.y + (to.y - f.y) * e;
+      if (to.s != null) it.scale = f.s + (to.s - f.s) * e;
+    });
+  },
+  spin(it, rx, ry, ms = 1100) {
+    if (!it || !it.el.isConnected) return Promise.resolve();
+    it.trot = { x: rx, y: ry, z: it.rz || 0 };
+    return sleepD(ms).then(() => { if (it) it.trot = null; });
+  },
+
+  find(type, k) {
+    return items.find(i => i.el.isConnected && i.type === type &&
+      (!k || i.gkind === k || i.wkind === k || i.bkind === k));
+  },
+  ring() {
+    return items.find(i => i.type === "widget" && i.def &&
+                           i.def.w === "ring" && i.el.isConnected);
+  },
+  async clear() {
+    items.filter(i => i.el.isConnected &&
+      ["panel", "browser", "card", "img", "model", "game", "wdg"].includes(i.type))
+      .forEach(killItem);
+    await sleepD(650);
+  },
+};
+const sleepD = ms => new Promise(r => setTimeout(r, ms));
+
+async function runDemo() {
+  DEMO.on = true;
+  const W = innerWidth, H = innerHeight;
+  const ring = () => DEMO.ring();
+
+  await sleepD(4200);                                  // let the intro play
+
+  // ---------------------------------------------------------- THE RING
+  DEMO.say("NOVROS", "A desktop that lives over your camera", 4200);
+  await sleepD(3400);
+  DEMO.say("One ring, six stations", "Click the centre to open the menu");
+  await DEMO.at(ring()); await DEMO.tap();
+  ringToggle(ring());
+  await sleepD(2600);
+
+  // ------------------------------------------------------------ WIDGETS
+  DEMO.say("Widgets", "Clock, date, weather and live news");
+  toggleWidget("clock", W * 0.16, H * 0.30);
+  await sleepD(500);
+  toggleWidget("date", W * 0.16, H * 0.58);
+  await sleepD(500);
+  toggleWidget("weather", W * 0.30, H * 0.16);
+  await sleepD(700);
+  toggleWidget("news", W * 0.62, H * 0.12);
+  await sleepD(2600);
+  DEMO.say("Live headlines", "BBC, Guardian and Sky, straight off the wire");
+  await sleepD(3000);
+
+  // ------------------------------------------------------------- MOVING
+  DEMO.say("Move anything", "Drag a window and it follows the pointer");
+  const clock = DEMO.find("wdg", "clock");
+  await DEMO.at(clock);
+  await DEMO.glide(clock, { x: W * 0.30, y: H * 0.34 }, 1100);
+  await DEMO.point(W * 0.30, H * 0.34, 300);
+  await DEMO.glide(clock, { x: W * 0.16, y: H * 0.30 }, 900);
+  await sleepD(600);
+
+  DEMO.say("Resize it", "Drag the corner, or roll the wheel over it");
+  await DEMO.glide(clock, { s: 1.7 }, 900);
+  await sleepD(500);
+  await DEMO.glide(clock, { s: 1 }, 800);
+  await sleepD(600);
+
+  DEMO.say("Rotate it", "Right-drag tumbles it in 3D");
+  await DEMO.spin(clock, -0.5, 0.9, 1200);
+  await DEMO.spin(clock, 0, 0, 900);
+  await sleepD(700);
+
+  // ----------------------------------------------------------- DOCUMENTS
+  DEMO.say("Documents", "Any folder of markdown — an Obsidian vault works as-is");
+  openBrowser(0, W * 0.30, H * 0.5);
+  await sleepD(1800);
+  const pane = DEMO.find("browser");
+  if (pane) {
+    const row = pane.el.querySelector(".brow");
+    if (row) {
+      const r = row.getBoundingClientRect();
+      await DEMO.point(r.left + 120, r.top + r.height / 2);
+      await DEMO.tap();
+      browserTap(pane, { x: r.left + 120, y: r.top + r.height / 2 });
+    }
+  }
+  await sleepD(2400);
+  const note = DEMO.find("panel");
+  if (note) {
+    DEMO.say("Scroll it", "Two fingers with a hand, the wheel with a mouse");
+    for (let k = 0; k < 4; k++) { scrollBy(note, 150); await sleepD(300); }
+    await sleepD(900);
+    await DEMO.glide(note, { x: W * 0.74, s: 0.9 }, 1000);
+  }
+  await sleepD(1200);
+
+  // --------------------------------------------------------------- GAMES
+  DEMO.say("Games", "Tetris, Space Invaders and Pac-Man, built for the board");
+  await sleepD(1400);
+  const t1 = makeGame("tetris");
+  if (t1) { t1.x = W * 0.22; t1.y = H * 0.55; }
+  await sleepD(900);
+  const t2 = makeGame("invaders");
+  if (t2) { t2.x = W * 0.46; t2.y = H * 0.55; }
+  await sleepD(900);
+  const t3 = makeGame("pacman");
+  if (t3) { t3.x = W * 0.70; t3.y = H * 0.56; }
+  await sleepD(1500);
+  DEMO.say("They are ordinary windows", "Move, scale, rotate and close them like anything else");
+  // give them something to do
+  const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", " ", "ArrowDown"];
+  for (let k = 0; k < 26; k++) {
+    [t1, t2, t3].forEach(g => g && g.game && g.game.key &&
+      g.game.key(keys[(Math.random() * keys.length) | 0]));
+    await sleepD(150);
+  }
+  await DEMO.spin(t3, -0.35, 0.5, 1100);
+  await DEMO.spin(t3, 0, 0, 800);
+  await sleepD(900);
+  [t1, t2, t3].forEach(g => g && killItem(g));
+  await sleepD(700);
+
+  // ------------------------------------------------------------ 3D MODELS
+  DEMO.say("Real 3D on the glass", "GLB models, lit and rendered live");
+  const MODELS = [
+    ["/media/models/sprout_dandys_world.glb", "Sprout"],
+    ["/media/models/berryroll_cosmo_-_dandys_world.glb", "Cosmo"],
+    ["/media/models/wooden_whimsywoody.glb", "Woody"],
+  ];
+  const made = [];
+  for (let k = 0; k < MODELS.length; k++) {
+    const it = makeModel(MODELS[k][0], MODELS[k][1]);
+    it.x = W * (0.26 + k * 0.24); it.y = H * 0.55;
+    it.anim = { k: "in", t: 0 }; it.el.style.opacity = "0.05";
+    items.push(it); made.push(it);
+    await sleepD(900);
+  }
+  await sleepD(2200);
+  DEMO.say("They spin, scale and carry", "Same controls as every other window");
+  await DEMO.glide(made[1], { s: 1.8, y: H * 0.5 }, 1200);
+  await sleepD(1800);
+  await DEMO.glide(made[1], { s: 1, y: H * 0.55 }, 900);
+  await sleepD(1600);
+
+  // ----------------------------------------------------------- THE THEME
+  DEMO.say("One wheel themes the whole thing", "Every colour rotates together");
+  for (const h of [280, 200, 32, 330, 168]) {
+    THEME.apply(h, 1, 1);
+    await sleepD(900);
+  }
+  await sleepD(700);
+
+  // ------------------------------------------------------- BACKGROUNDS
+  DEMO.say("Virtual backgrounds", "Blur, a colour, or any image you drop in");
+  const imgs = bgImages();
+  if (imgs.length) {
+    BG.hideMe = false;
+    await BG.set("blur"); await sleepD(2400);
+    for (const u of imgs.slice(0, 3)) { await BG.set("image", u); await sleepD(2000); }
+    DEMO.say("Or take yourself out of it entirely", "Hide me: the backdrop, and nothing else");
+    BG.hideMe = true; await BG.set("image", imgs[0]);
+    await sleepD(2800);
+    BG.hideMe = false; await BG.set("none");
+  }
+  await sleepD(800);
+  made.forEach(m => killItem(m));
+  await sleepD(600);
+
+  // ------------------------------------------------------ INPUT PLANES
+  DEMO.say("Three ways to drive it", "Switchable at any moment");
+  await sleepD(2200);
+  const planes = [
+    [0, "Mouse and hand", "Point with a finger, click with your thumb"],
+    [1, "Mouse and head", "Turn your head to aim, blink to open"],
+    [3, "Hands only", "One finger is the cursor, the thumb is the button"],
+    [4, "Head only", "For when your hands are busy"],
+    [0, "Back to both", "Nothing is locked in"],
+  ];
+  for (const [i, t, sub] of planes) {
+    setMode(i); DEMO.say(t, sub, 2600);
+    await sleepD(2600);
+  }
+
+  // ---------------------------------------------------------- SETTINGS
+  DEMO.say("Settings", "Every threshold is a slider, and nothing needs applying");
+  openSettings();
+  await sleepD(2600);
+  const cfg = items.find(i => i.isCfg && i.el.isConnected);
+  if (cfg) {
+    await DEMO.at(cfg);
+    for (let k = 0; k < 5; k++) { scrollBy(cfg, 220); await sleepD(420); }
+    await sleepD(1400);
+    killItem(cfg);
+  }
+  await sleepD(900);
+
+  // ------------------------------------------------------------- FINALE
+  DEMO.say("Clear the board", "Clap your hands, and it all goes");
+  await DEMO.clear();
+  const r2 = ring();
+  if (r2) { r2.x = W * 0.5; r2.y = H * 0.5; }
+  await sleepD(1200);
+  DEMO.say("NOVROS", "No headset. No controllers. No gloves.", 6000);
+  await sleepD(5200);
+  DEMO.on = false;
+}
+
 const UIPREF = { modeBar: true, ink: "auto" };
 if (typeof window !== "undefined") {
   window.UIPREF = UIPREF; window.BG = BG;
   window.makeGame = k => makeGame(k);
+  window.runDemo = () => runDemo();
+  window.spawnStage = (a, b) => spawnStage(a, b);
+  window.loadTree = () => loadTree();
   window.openSettings = () => openSettings();   // hoisted: safe to wrap
   window.setMode = i => setMode(i);
 }
@@ -6193,6 +6504,19 @@ if (ROLE === "render") {
   buildModes();        // up immediately rather than waiting on a camera
   loadPrefs();
   runIntro();
+  if (Q.get("demo") === "1") {
+    document.body.classList.add("demo");
+    // wait for the board to EXIST rather than for a clock to run out:
+    // the camera can take a while, and the tour has nothing to tour
+    // until the ring is there
+    const armDemo = () => {
+      if (items.some(i => i.type === "widget" && i.el.isConnected))
+        runDemo().catch(err => console.error("demo stopped:", err));
+      else setTimeout(armDemo, 300);
+    };
+    setTimeout(armDemo, 1000);
+    addEventListener("keydown", e => { if (e.key === "Escape") DEMO.stop = true; });
+  }
   boot().catch(e => {
     document.getElementById("boot").innerHTML =
       `STAGE FAILED TO BOOT<br><span style="color:#ff6666;font-size:13px">${e.message}</span>`;
