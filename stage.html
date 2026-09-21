@@ -6831,6 +6831,9 @@ if (ROLE === "render") {
   buildModes();        // up immediately rather than waiting on a camera
   loadPrefs();
   runIntro();
+  // ?settings=1 opens the panel on load, for screenshots and for anyone
+  // who wants to land straight in the controls
+  if (Q.get("settings") === "1") setTimeout(() => openSettings(), 1500);
   if (Q.get("demo") === "1") {
     document.body.classList.add("demo");
     // wait for the board to EXIST rather than for a clock to run out:
