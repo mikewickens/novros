@@ -2,8 +2,6 @@
 
 **The No-VR Operating System.**
 
-![NOVROS](docs/screens/everything.jpg)
-
 A desktop that lives over your camera feed. Windows, widgets, games and
 settings float on glass in front of you, and you drive them with your
 hands, your head, or an ordinary mouse. No headset. No controllers. No
@@ -17,37 +15,9 @@ NOVROS is a fork, and stays open under the same AGPL-3.0 terms.
 
 ---
 
-## What it looks like
+## Scenes
 
-**The ring and its six stations.** Click the centre and they bloom around it.
-
-![The ring and its stations](docs/screens/home.jpg)
-
-**Widgets** — clock, date, weather, a live news ticker and a data-stream terminal.
-
-![Widgets](docs/screens/widgets.jpg)
-
-**A live terminal**, threading the real headlines through telemetry, hex and timings.
-
-![Terminal](docs/screens/terminal.jpg)
-
-**Procedural 3D** — a breathing icosphere, a torus knot, a lattice under a travelling wave, and a counter-wound double helix. Built from maths, not loaded from a file.
-
-![Procedural 3D](docs/screens/shapes.jpg)
-
-**Games** — Tetris, Space Invaders and Asteroids, written for the board. Ordinary windows, so they move, scale, rotate and close like anything else.
-
-![Games](docs/screens/games.jpg)
-
-**Documents** — any folder of markdown. An Obsidian vault works as it is.
-
-![Documents](docs/screens/docs.jpg)
-
-**Settings** — every threshold is a slider, the wheel rotates the whole palette, and nothing needs applying.
-
-![Settings](docs/screens/settings.jpg)
-
-Every one of these is a URL, so you can go straight to any of them:
+Any part of the board is a URL, so you can go straight to it:
 
 ```
 stage.html?scene=everything    home  widgets  terminal
