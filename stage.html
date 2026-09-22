@@ -4224,8 +4224,12 @@ function makeWidget(kind) {
   const el = document.createElement("div");
   el.className = `card wdg ${kind}w`;
   el.innerHTML = `<div class="win"></div>`;
-  // no close button on a widget: it is furniture, not a window, and the
-  // Widgets station toggles it off the same way it put it on
+  // A widget gets a close button like everything else. It was left off
+  // while the X was always visible, which made furniture look cluttered
+  // -- now that it only appears when you point at one, there is no cost
+  // to having it, and a widget should not be the one thing you cannot
+  // shut without hunting for its row in a station.
+  closable(el);
   BEHIND.appendChild(el);
   const w = { el, id: UID++, type: "wdg", wkind: kind,
               def: { title: WDG_KINDS[kind].title, file: "" },

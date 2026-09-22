@@ -128,7 +128,7 @@ the BBC, the Guardian and Sky. Click a row to put one on the board, click
 it again to take it away. Whichever ones you had open come back after a
 reload, where you left them.
 
-Widgets have no close button — the station toggles them.
+Widgets close like any other window: point at one and press its X, or toggle its row off in the station.
 
 
 # Games
