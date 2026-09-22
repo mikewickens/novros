@@ -10,10 +10,7 @@ barehands.json
 classic.html
 NOVROS-demo.mp4
 NOVROS-settings-*.png
-# Mixamo characters are Adobe's; use them, do not redistribute them.
-# ** rather than * so it reaches the .anims folders too -- a single star
-# does not cross a slash, so the clip libraries were slipping through.
-media/**/*.glb
+# Mixamo source downloads stay out; the converted GLBs are committed.
 media/**/*.fbx
 # an empty stub inherited from upstream; nothing reads it
 package-lock.json
