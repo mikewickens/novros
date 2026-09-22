@@ -277,13 +277,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
           font:600 14px -apple-system,sans-serif;
           color:rgba(var(--c39),0.72); background:rgba(var(--c5),0.42);
           border:1px solid rgba(var(--c33),0.28); backdrop-filter:blur(6px);
-          -webkit-backdrop-filter:blur(6px); opacity:0.62;
+          -webkit-backdrop-filter:blur(6px); opacity:0;
           transition:opacity .14s ease, background .14s ease, color .14s ease; }
   /* A 26px target is fine for a mouse and small for a tracked hand, so
      the button hit-tests over a wider area than it draws. The halo is
      part of the button, so elementFromPoint still answers with it. */
   .xbtn::before { content:""; position:absolute; inset:-15px; border-radius:50%; }
-  .card:hover > .xbtn, .panel:hover > .xbtn { opacity:1; }
+  /* A hand cursor is a div with pointer-events:none, so CSS :hover
+     never fires for it -- .hovered is set from the pointer code so the
+     hand and head planes get the same affordance the mouse does. */
+  .card:hover > .xbtn, .panel:hover > .xbtn,
+  .card.hovered > .xbtn, .panel.hovered > .xbtn { opacity:1; }
   .xbtn:hover { background:rgba(255,105,97,0.9); color:#fff;
                 border-color:rgba(255,150,140,0.95); }
   .panel > .xbtn { top:13px; right:14px; width:30px; height:30px; font-size:15px; }
@@ -951,10 +955,10 @@ function pointSingle(cur) {
 function pointDouble(cur) {
   const c = hitTest(cur);
   if (!c) return;
-  if (c.type === "card" && c.def.file)            return openPanel(c);
-  if (c.type === "img" || c.type === "model" || c.type === "wdg" ||
-      c.type === "shape" || c.type === "panel" ||
-      c.type === "browser") return killItem(c);
+  if (c.type === "card" && c.def.file) return openPanel(c);
+  // Nothing closes on a tap. A window shuts by its X, by being thrown
+  // off the board, or by the clap that clears everything -- never by
+  // being touched, which is what made a window vanish mid-read.
 }
 // Activation happens WHERE YOU PRESSED and the instant you let go.
 // Both matter. It used to wait 420ms to see whether a second click was
@@ -982,12 +986,7 @@ function pointActivate(x, y, cur) {
   if (c.type === "orb")     return orbActivate(c);
   if (c.type === "browser") return browserTap(c, at);
   if (c.type === "card" && c.def.file) return openPanel(c);
-  if (c.type === "img" || c.type === "model") return killItem(c);
-  if (c.type === "panel") {                   // notes close at the bar
-    const barEl = c.el.querySelector(".bar");
-    const r = barEl && barEl.getBoundingClientRect();
-    if (r && at.y >= r.top && at.y <= r.bottom) killItem(c);
-  }
+  // no tap closes anything: the X, a throw, or the clap
 }
 function pointClick(cur) { pointActivate(cur.x, cur.y, cur); }
 
@@ -1032,6 +1031,18 @@ addEventListener("click", e => {
 // The hand and head planes do not know about DOM buttons, so give the
 // pointer the same target: resting on the X closes the window, which is
 // otherwise only reachable with a mouse.
+// The hand and the head move a div with pointer-events:none, so the
+// browser never gives their target a :hover. This marks it by hand, so
+// the close button reveals itself the same way for every plane.
+let hoverEl = null;
+function markHover(c) {
+  const el = c && c.el;
+  if (hoverEl === el) return;
+  if (hoverEl) hoverEl.classList.remove("hovered");
+  hoverEl = el || null;
+  if (hoverEl) hoverEl.classList.add("hovered");
+}
+
 function pointerHitClose(cur) {
   const el = document.elementFromPoint(cur.x, cur.y);
   const b = el && el.closest && el.closest(".xbtn");
@@ -5136,11 +5147,11 @@ function endGrab(c, i, cur) {
     }
     // v3.3/v3.8: a quick tap on the GRIP BAR closes — notes and
     // folder panes alike
-    if ((c.type === "browser" || c.type === "panel") && c.barGrab &&
-        !cur.probKill) {
-      if (isTap(cur, c)) killItem(c);
+    // The grip bar MOVES a window and nothing more. It used to close on
+    // a quick tap there, which meant the one place you are meant to
+    // grab a window to drag it was also the place that destroyed it.
+    if ((c.type === "browser" || c.type === "panel") && c.barGrab)
       c.barGrab = false;
-    }
     // GESTURE v3 (2026-08-14, Jared's spec — "make it a single pinch"):
     // THE TAP OPENS — a quick, near-still release on a file-card
     // unfurls its note. Same tap idiom rows and widget buttons already
@@ -5157,10 +5168,7 @@ function endGrab(c, i, cur) {
     // tap meanings; a fresh force-pull catch can't be tap-killed.
     // v3.8: notes close at the BAR only (matching folders) — a body
     // tap can't kill a note mid-read; images/models keep tap-anywhere
-    if ((c.type === "img" || c.type === "model")
-        && !pullFresh && !c.flying) {
-      if (isTap(cur, c)) killItem(c);
-    }
+    // images and models used to close on a tap anywhere; they do not
     // PHASE 2 quick-tap releases: the RING toggles its orbital bloom;
     // an ORB grows into its browser pane (same discrimination gate as
     // the browser-row tap: short grip, near-zero travel)
@@ -5868,9 +5876,11 @@ async function boot() {
         if (cur.ptActive) {
           const el0 = document.elementFromPoint(cur.x, cur.y);
           const overX = !!(el0 && el0.closest && el0.closest(".xbtn"));
-          cur.el.classList.toggle("over", overX || !!hitTest(cur));
+          const tgt = hitTest(cur);
+          cur.el.classList.toggle("over", overX || !!tgt);
           cur.el.classList.toggle("overx", overX);
-        } else cur.el.classList.remove("over", "overx");
+          markHover(tgt);                 // reveal its close button
+        } else { cur.el.classList.remove("over", "overx"); markHover(null); }
 
         const handGarbage = aspect > 6;
         if (handGarbage) cur.probKill = true;   // garbage drops mute taps
@@ -6922,6 +6932,7 @@ const HEAD = {
     cur.x = this.fx(Math.max(4, Math.min(innerWidth - 4, tx)), now);
     cur.y = this.fy(Math.max(4, Math.min(innerHeight - 4, ty)), now);
     cur.el.style.left = cur.x + "px"; cur.el.style.top = cur.y + "px";
+    markHover(hitTest(cur));                   // reveal its close button
     if (this.held) {                           // carrying something
       this.held.x = cur.x + (this.held.ox || 0);
       this.held.y = cur.y + (this.held.oy || 0);
@@ -7106,13 +7117,7 @@ function mouseTap(c, cur) {
     return ringToggle(c);
   }
   if (c.type === "card" && c.def.file) return openPanel(c);
-  if (c.type === "img" || c.type === "model" ||
-      c.type === "wdg" || c.type === "shape") return killItem(c);
-  if (c.type === "panel") {                       // notes close at the bar
-    const barEl = c.el.querySelector(".bar");
-    const r = barEl && barEl.getBoundingClientRect();
-    if (r && cur.y >= r.top && cur.y <= r.bottom) killItem(c);
-  }
+  // and the mouse agrees: a click never closes a window either
 }
 
 addEventListener("contextmenu", e => { if (mDrag || hitTest({ x: e.clientX, y: e.clientY })) e.preventDefault(); });

@@ -52,7 +52,7 @@ Mouse is on by default.
     shift + wheel       resize anything
     bottom-right corner drag to resize
     bottom-left corner  drag to spin in place
-    the X, top right    close the window
+    the X, top right    close the window (it appears on hover)
 
 Hold **shift** while rotating for fine control.
 
@@ -70,6 +70,11 @@ before the hand will listen.
     ...release without moving  click: it opens, or it closes
     ...move, then release      you dragged it there
     open your hand flat        always lets go, whatever else is true
+
+**Closing a window** takes one of three things: its X, which appears when
+you point at it; throwing it off the edge of the board; or the clap,
+which clears everything. Nothing closes because you touched it -- a
+window you are reading should not vanish under your hand.
 
     two fingers out            index and middle
     ...move up and down        scroll the pane under the cursor
