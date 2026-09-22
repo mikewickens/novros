@@ -7,9 +7,8 @@ settings float on glass in front of you, and you drive them with your
 hands, your head, or an ordinary mouse. No headset. No controllers. No
 gloves.
 
-Built on **[barehands](https://github.com/jaredrhod/barehands)** by Jared
-Rhodenizer, whose hand tracking is the engine underneath all of this.
-NOVROS is a fork, and stays open under the same AGPL-3.0 terms.
+A fork of [barehands](https://github.com/jaredrhod/barehands), extensively
+rewritten. Open under AGPL-3.0.
 
 ---
 
@@ -127,9 +126,6 @@ Hand and face tracking and person segmentation by
 3D by [three.js](https://threejs.org) (MIT). Weather from
 [Open-Meteo](https://open-meteo.com). Both tracking libraries load from
 public CDNs; this repo redistributes neither.
-
-Built on [barehands](https://github.com/jaredrhod/barehands) by Jared
-Rhodenizer.
 
 ## License
 

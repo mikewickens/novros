@@ -4,8 +4,6 @@ The No-VR Operating System. A desktop that lives over your camera feed,
 driven by your hands, your head, or an ordinary mouse. No headset, no
 controllers, no gloves.
 
-Built on **barehands** by Jared Rhodenizer, whose hand tracking is the
-engine underneath all of this.
 
 
 # Starting it
