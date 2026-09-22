@@ -91,10 +91,9 @@ board — that jail is a safety feature.
 
 ### Backgrounds
 
-The repo ships no wallpapers: Apple's desktop pictures are Apple's, and
-this fork has no licence to redistribute them. But every Mac already has
-them, so there is nothing to redistribute — one command converts your own
-copies into something the board can use:
+Thirteen backgrounds ship with the repo. For more, `bin/get-backgrounds.sh`
+converts the wallpapers already on your own Mac — around 150 of them,
+without redistributing anything:
 
 ```bash
 ./bin/get-backgrounds.sh
